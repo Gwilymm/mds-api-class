@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Accueil</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="/leaflet/leaflet.css" rel="stylesheet">
+  <style>
+    #map {
+      height: 500px;
+    }
+    #error-message {
+      color: red;
+      font-weight: bold;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+  <header class="bg-white shadow">
+    <div class="container mx-auto px-4 py-6">
+      <h1 class="text-3xl font-bold text-center">Bienvenue sur notre Application</h1>
+    </div>
+  </header>
+  <main class="container mx-auto px-4 py-8">
+    <section class="bg-white p-6 rounded-lg shadow-lg">
+      <h2 class="text-2xl font-semibold mb-4">Fonctionnalités</h2>
+      <ul class="list-disc pl-5 space-y-2">
+        <li>Partage de position en temps réel</li>
+        <li>Visioconférence avec WebRTC</li>
+        <li>Utilisation de l'accéléromètre</li>
+      </ul>
+    </section>
+    <section class="bg-white p-6 rounded-lg shadow-lg mt-8">
+      <h2 class="text-2xl font-semibold mb-4">Carte des Utilisateurs</h2>
+      <div id="user-form" class="flex justify-center mb-4">
+        <input type="text" id="username" placeholder="Entrez votre nom" class="p-2 border rounded mr-2" />
+        <button onclick="initializeUser()" class="bg-blue-500 text-white px-4 py-2 rounded">Commencer</button>
+      </div>
+      <div id="map" class="mb-4"></div>
+      <div id="error-message"></div>
+      <div id="user-list">
+        <h3 class="text-xl font-semibold mb-2">Liste des Utilisateurs</h3>
+        <ul id="user-list-ul" class="space-y-2"></ul>
+      </div>
+    </section>
+  </main>
+  <footer class="bg-white shadow mt-8">
+    <div class="container mx-auto px-4 py-6 text-center">
+      <p>&copy; 2024 Notre Application. Tous droits réservés.</p>
+    </div>
+  </footer>
+  <script src="/leaflet/leaflet.js"></script>
+  <script>
+    let userId = null;
+    let username = null;
+    let ws = null;
+
+    const map = L.map('map').setView([51.505, -0.09], 13);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    const markers = {};
+
+    const updateUserPositions = (users) => {
+      if (!Array.isArray(users)) {
+        console.error('La réponse de l\'API n\'est pas un tableau d\'utilisateurs:', users);
+        return;
+      }
+      const userList = document.getElementById('user-list-ul');
+      userList.innerHTML = ''; // Clear the list
+      users.forEach(user => {
+        if (markers[user.id]) {
+          markers[user.id].setLatLng([user.position.lat, user.position.lng]);
+        } else {
+          markers[user.id] = L.marker([user.position.lat, user.position.lng]).addTo(map)
+          .bindPopup(user.name).openPopup();
+        }
+        // Add user to the list
+        const li = document.createElement('li');
+        li.className = "flex justify-between items-center p-2 bg-gray-100 rounded shadow";
+        li.innerHTML = `<span>${user.name}</span> <button onclick="startVideoCall('${user.id}')" class="bg-green-500 text-white px-2 py-1 rounded">Visio</button>`;
+        userList.appendChild(li);
+      });
+    };
+
+    const fetchUserPositions = async () => {
+      try {
+        const response = await fetch('/api/users');
+        if (!response.ok) {
+          throw new Error('Erreur lors de la récupération des utilisateurs: ' + response.statusText);
+        }
+        const text = await response.text(); // Lire la réponse en tant que texte
+       
+        const users = JSON.parse(text); // Convertir le texte en JSON
+        console.log('Utilisateurs reçus:', users);
+        updateUserPositions(users);
+      } catch (error) {
+        console.error('Erreur lors de la récupération des utilisateurs:', error);
+      }
+    };
+
+    const sendUserPosition = (position) => {
+      const data = {
+        id: userId,
+        name: username,
+        position: {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        },
+        type: 'update'
+      };
+      ws.send(JSON.stringify(data));
+    };
+
+    const updateUserPosition = (position) => {
+      const data = {
+        id: userId,
+        name: username,
+        position: {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        },
+        type: 'update'
+      };
+      ws.send(JSON.stringify(data));
+
+      // Mettre à jour le marqueur de l'utilisateur sur la carte
+      if (markers[userId]) {
+        markers[userId].setLatLng([position.coords.latitude, position.coords.longitude]);
+      } else {
+        markers[userId] = L.marker([position.coords.latitude, position.coords.longitude]).addTo(map)
+        .bindPopup(username).openPopup();
+      }
+
+      // Centrer la carte sur la position de l'utilisateur
+      map.setView([position.coords.latitude, position.coords.longitude], map.getZoom());
+    };
+
+    const successCallback = (position) => {
+    
+      sendUserPosition(position);
+      map.setView([position.coords.latitude, position.coords.longitude], 13);
+
+      // Ajouter le marqueur initial de l'utilisateur
+      if (!markers[userId]) {
+        markers[userId] = L.marker([position.coords.latitude, position.coords.longitude]).addTo(map)
+        .bindPopup(username).openPopup();
+      }
+
+      // Mettre à jour la position de l'utilisateur toutes les 10 secondes
+      setInterval(() => {
+        navigator.geolocation.getCurrentPosition(updateUserPosition, errorCallback);
+      }, 10000);
+    };
+
+    const errorCallback = (error) => {
+      const errorMessageElement = document.getElementById('error-message');
+      switch(error.code) {
+        case error.PERMISSION_DENIED:
+          errorMessageElement.textContent = "L'utilisateur a refusé la demande de géolocalisation.";
+          break;
+        case error.POSITION_UNAVAILABLE:
+          errorMessageElement.textContent = "Les informations de localisation sont indisponibles.";
+          break;
+        case error.TIMEOUT:
+          errorMessageElement.textContent = "La demande de localisation a expiré.";
+          break;
+        case error.UNKNOWN_ERROR:
+          errorMessageElement.textContent = "Une erreur inconnue s'est produite.";
+          break;
+      }
+      console.error(error);
+    };
+
+    const initializeUser = () => {
+      username = document.getElementById('username').value.trim();
+      if (!username) {
+        alert('Veuillez entrer un nom');
+        return;
+      }
+      userId = 'user-' + Date.now(); // Générer un ID unique pour l'utilisateur
+      document.getElementById('user-form').style.display = 'none';
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(successCallback, errorCallback);
+      } else {
+        document.getElementById('error-message').textContent = "La géolocalisation n'est pas prise en charge par ce navigateur.";
+      }
+
+      // Initialise WebSocket connection
+      ws = new WebSocket('ws://localhost:3000');
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+      };
+      ws.onmessage = (event) => {
+        const users = JSON.parse(event.data);
+        console.log('Mise à jour des utilisateurs:', users);
+        updateUserPositions(users);
+      };
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+      };
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      window.addEventListener('beforeunload', () => {
+        const data = {
+          id: userId,
+          type: 'disconnect'
+        };
+        ws.send(JSON.stringify(data));
+      });
+    };
+
+    const startVideoCall = (id) => {
+      alert('Démarrer la visioconférence avec ' + id);
+    };
+
+    // Fetch user positions every 5 seconds
+    setInterval(fetchUserPositions, 5000);
+
+    // Initial fetch
+    fetchUserPositions();
+  </script>
+</body>
+</html>
