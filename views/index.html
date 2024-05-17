@@ -15,6 +15,21 @@
       font-weight: bold;
       margin-top: 20px;
     }
+    #video-chat {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      z-index: 1000;
+    }
+    #video-chat video {
+      width: 300px;
+      height: 200px;
+    }
   </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
@@ -51,11 +66,21 @@
       <p>&copy; 2024 Notre Application. Tous droits réservés.</p>
     </div>
   </footer>
+
+  <div id="video-chat" class="bg-white p-6 rounded-lg shadow-lg">
+    <h3 class="text-xl font-semibold mb-4">Visioconférence</h3>
+    <video id="local-video" autoplay playsinline class="w-full mb-4"></video>
+    <video id="remote-video" autoplay playsinline class="w-full"></video>
+    <button onclick="endVideoCall()" class="bg-red-500 text-white px-4 py-2 rounded mt-4">Terminer l'appel</button>
+  </div>
+
   <script src="/leaflet/leaflet.js"></script>
   <script>
     let userId = null;
     let username = null;
     let ws = null;
+    let peerConnection = null;
+    const configuration = { 'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}] };
 
     const map = L.map('map').setView([51.505, -0.09], 13);
 
@@ -216,8 +241,84 @@
       });
     };
 
-    const startVideoCall = (id) => {
-      alert('Démarrer la visioconférence avec ' + id);
+    const startVideoCall = async (id) => {
+      document.getElementById('video-chat').style.display = 'block';
+
+      peerConnection = new RTCPeerConnection(configuration);
+
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          ws.send(JSON.stringify({ type: 'candidate', candidate: event.candidate, to: id }));
+        }
+      };
+
+      peerConnection.ontrack = event => {
+        document.getElementById('remote-video').srcObject = event.streams[0];
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      document.getElementById('local-video').srcObject = stream;
+      stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+
+      ws.send(JSON.stringify({ type: 'offer', offer: offer, to: id }));
+    };
+
+    const handleVideoOffer = async (offer, from) => {
+      peerConnection = new RTCPeerConnection(configuration);
+
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          ws.send(JSON.stringify({ type: 'candidate', candidate: event.candidate, to: from }));
+        }
+      };
+
+      peerConnection.ontrack = event => {
+        document.getElementById('remote-video').srcObject = event.streams[0];
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      document.getElementById('local-video').srcObject = stream;
+      stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+
+      ws.send(JSON.stringify({ type: 'answer', answer: answer, to: from }));
+    };
+
+    const handleVideoAnswer = async (answer) => {
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+    };
+
+    const handleNewICECandidate = async (candidate) => {
+      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    };
+
+    const endVideoCall = () => {
+      peerConnection.close();
+      peerConnection = null;
+      document.getElementById('video-chat').style.display = 'none';
+      document.getElementById('local-video').srcObject = null;
+      document.getElementById('remote-video').srcObject = null;
+    };
+
+    ws.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      switch (message.type) {
+        case 'offer':
+          handleVideoOffer(message.offer, message.from);
+          break;
+        case 'answer':
+          handleVideoAnswer(message.answer);
+          break;
+        case 'candidate':
+          handleNewICECandidate(message.candidate);
+          break;
+      }
     };
 
     // Fetch user positions every 5 seconds
