@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const path = require('path');
 let users = []; // Initialiser la liste des utilisateurs
 
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -13,7 +14,7 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // API RESTful pour les utilisateurs
-app.use('/api/users', (req, res) => {
+app.get('/api/users', (req, res) => {
 	res.json(users);
 });
 
@@ -24,13 +25,10 @@ app.get('/', (req, res) => {
 
 // WebSocket pour les mises à jour en temps réel
 wss.on('connection', (ws) => {
-	console.log('Client connected');
-
-	// Envoyer les positions actuelles à chaque nouveau client
-	ws.send(JSON.stringify(users));
-
 	ws.on('message', (message) => {
 		const data = JSON.parse(message);
+		console.log('Message received from client:', data);
+
 		if (data.type === 'update') {
 			const user = users.find(u => u.id === data.id);
 			if (user) {
@@ -41,30 +39,50 @@ wss.on('connection', (ws) => {
 			}
 		} else if (data.type === 'disconnect') {
 			users = users.filter(user => user.id !== data.id);
+		} else if (data.type === 'invite') {
+			const targetUser = users.find(user => user.id === data.to);
+			if (targetUser) {
+				targetUser.ws.send(JSON.stringify(data));
+			}
+		} else if (data.type === 'offer' || data.type === 'answer' || data.type === 'candidate') {
+			const targetUser = users.find(user => user.id === data.to);
+			if (targetUser) {
+				targetUser.ws.send(JSON.stringify(data));
+			}
 		}
 
 		// Diffuser les nouvelles positions à tous les clients connectés
+		const usersWithoutWS = users.map(user => ({
+			id: user.id,
+			name: user.name,
+			position: user.position
+		}));
+
 		wss.clients.forEach(client => {
 			if (client.readyState === WebSocket.OPEN) {
-				client.send(JSON.stringify(users));
+				client.send(JSON.stringify(usersWithoutWS));
 			}
 		});
 	});
 
 	ws.on('close', () => {
-		console.log('Client disconnected');
 		users = users.filter(user => user.ws !== ws);
 
-		// Diffuser la nouvelle liste d'utilisateurs à tous les clients connectés
+		// Diffuser les nouvelles positions à tous les clients connectés
+		const usersWithoutWS = users.map(user => ({
+			id: user.id,
+			name: user.name,
+			position: user.position
+		}));
+
 		wss.clients.forEach(client => {
 			if (client.readyState === WebSocket.OPEN) {
-				client.send(JSON.stringify(users));
+				client.send(JSON.stringify(usersWithoutWS));
 			}
 		});
 	});
 });
-
 const port = 3000;
 server.listen(port, () => {
-	console.log(`Server is running`);
+	console.log(`Server is running on port ${port}`);
 });

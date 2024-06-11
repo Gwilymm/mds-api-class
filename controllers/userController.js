@@ -26,3 +26,14 @@ exports.updateUserPosition = (req, res) => {
 		res.status(404).json({ message: 'User not found' });
 	}
 };
+
+// get user by id
+exports.getUserById = (req, res) => {
+	const { id } = req.params;
+	const user = users.find(u => u.id === id);
+	if (user) {
+		res.json(user);
+	} else {
+		res.status(404).json({ message: 'User not found' });
+	}
+};

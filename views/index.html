@@ -69,8 +69,8 @@
 
   <div id="video-chat" class="bg-white p-6 rounded-lg shadow-lg">
     <h3 class="text-xl font-semibold mb-4">Visioconférence</h3>
-    <video id="local-video" autoplay playsinline class="w-full mb-4"></video>
-    <video id="remote-video" autoplay playsinline class="w-full"></video>
+    <video id="local-video" playsinline autoplay class="w-full mb-4"></video>
+    <video id="remote-video" playsinline autoplay class="w-full"></video>
     <button onclick="endVideoCall()" class="bg-red-500 text-white px-4 py-2 rounded mt-4">Terminer l'appel</button>
   </div>
 
@@ -80,7 +80,15 @@
     let username = null;
     let ws = null;
     let peerConnection = null;
-    const configuration = { 'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}] };
+    let iceCandidatesQueue = [];
+
+    const configuration = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+      ]
+    };
+
+    L.Icon.Default.imagePath = 'https://unpkg.com/leaflet@1.7.1/dist/images/';
 
     const map = L.map('map').setView([51.505, -0.09], 13);
 
@@ -107,7 +115,7 @@
         // Add user to the list
         const li = document.createElement('li');
         li.className = "flex justify-between items-center p-2 bg-gray-100 rounded shadow";
-        li.innerHTML = `<span>${user.name}</span> <button onclick="startVideoCall('${user.id}')" class="bg-green-500 text-white px-2 py-1 rounded">Visio</button>`;
+        li.innerHTML = `<span>${user.name}</span> <button onclick="inviteToVideoCall('${user.id}')" class="bg-green-500 text-white px-2 py-1 rounded">Visio</button>`;
         userList.appendChild(li);
       });
     };
@@ -119,9 +127,8 @@
           throw new Error('Erreur lors de la récupération des utilisateurs: ' + response.statusText);
         }
         const text = await response.text(); // Lire la réponse en tant que texte
-       
         const users = JSON.parse(text); // Convertir le texte en JSON
-        console.log('Utilisateurs reçus:', users);
+        
         updateUserPositions(users);
       } catch (error) {
         console.error('Erreur lors de la récupération des utilisateurs:', error);
@@ -129,44 +136,51 @@
     };
 
     const sendUserPosition = (position) => {
-      const data = {
-        id: userId,
-        name: username,
-        position: {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        },
-        type: 'update'
-      };
-      ws.send(JSON.stringify(data));
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        const data = {
+          id: userId,
+          name: username,
+          position: {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          },
+          type: 'update'
+        };
+        ws.send(JSON.stringify(data));
+      } else {
+        console.warn('WebSocket is not open. Cannot send position.');
+      }
     };
 
     const updateUserPosition = (position) => {
-      const data = {
-        id: userId,
-        name: username,
-        position: {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        },
-        type: 'update'
-      };
-      ws.send(JSON.stringify(data));
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        const data = {
+          id: userId,
+          name: username,
+          position: {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          },
+          type: 'update'
+        };
+        ws.send(JSON.stringify(data));
 
-      // Mettre à jour le marqueur de l'utilisateur sur la carte
-      if (markers[userId]) {
-        markers[userId].setLatLng([position.coords.latitude, position.coords.longitude]);
+        // Mettre à jour le marqueur de l'utilisateur sur la carte
+        if (markers[userId]) {
+          markers[userId].setLatLng([position.coords.latitude, position.coords.longitude]);
+        } else {
+          markers[userId] = L.marker([position.coords.latitude, position.coords.longitude]).addTo(map)
+          .bindPopup(username).openPopup();
+        }
+
+        // Centrer la carte sur la position de l'utilisateur
+        map.setView([position.coords.latitude, position.coords.longitude], map.getZoom());
       } else {
-        markers[userId] = L.marker([position.coords.latitude, position.coords.longitude]).addTo(map)
-        .bindPopup(username).openPopup();
+        console.warn('WebSocket is not open. Cannot update position.');
       }
-
-      // Centrer la carte sur la position de l'utilisateur
-      map.setView([position.coords.latitude, position.coords.longitude], map.getZoom());
     };
 
     const successCallback = (position) => {
-    
       sendUserPosition(position);
       map.setView([position.coords.latitude, position.coords.longitude], 13);
 
@@ -201,131 +215,243 @@
       console.error(error);
     };
 
-    const initializeUser = () => {
-      username = document.getElementById('username').value.trim();
-      if (!username) {
-        alert('Veuillez entrer un nom');
-        return;
-      }
-      userId = 'user-' + Date.now(); // Générer un ID unique pour l'utilisateur
-      document.getElementById('user-form').style.display = 'none';
-      if ("geolocation" in navigator) {
-        navigator.geolocation.getCurrentPosition(successCallback, errorCallback);
-      } else {
-        document.getElementById('error-message').textContent = "La géolocalisation n'est pas prise en charge par ce navigateur.";
-      }
+    const initializeUser = async () => {
+        username = document.getElementById('username').value.trim();
+        if (!username) {
+          alert('Veuillez entrer un nom');
+          return;
+        }
+        userId = 'user-' + Date.now(); // Générer un ID unique pour l'utilisateur
+        document.getElementById('user-form').style.display = 'none';
 
-      // Initialise WebSocket connection
-      ws = new WebSocket('ws://localhost:3000');
-      ws.onopen = () => {
-        console.log('WebSocket connected');
-      };
-      ws.onmessage = (event) => {
-        const users = JSON.parse(event.data);
-        console.log('Mise à jour des utilisateurs:', users);
-        updateUserPositions(users);
-      };
-      ws.onclose = () => {
-        console.log('WebSocket disconnected');
-      };
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
+        try {
+          // Vérifiez et demandez la permission de géolocalisation
+          const geoPermission = await navigator.permissions.query({ name: 'geolocation' });
+          if (geoPermission.state === 'granted' || geoPermission.state === 'prompt') {
+            navigator.geolocation.getCurrentPosition(successCallback, errorCallback);
+          } else {
+            alert('Géolocalisation refusée');
+          }
 
-      window.addEventListener('beforeunload', () => {
-        const data = {
-          id: userId,
-          type: 'disconnect'
+          // Vérifiez et demandez la permission pour la caméra et le microphone
+          
+        } catch (error) {
+          console.error('Erreur d\'accès aux périphériques:', error);
+          alert('Erreur d\'accès aux périphériques : ' + error.message);
+        }
+
+        // Initialise WebSocket connection
+        ws = new WebSocket('wss://gwilym.is-a.dev'); // Utilisez l'URL de votre serveur sécurisé
+        ws.onopen = () => {
+          console.log('WebSocket connected');
         };
-        ws.send(JSON.stringify(data));
-      });
-    };
+        ws.onmessage = async (event) => {
+          const message = JSON.parse(event.data);
+          console.log('WebSocket message received:', message); // Ajout du log pour chaque message reçu
 
-    const startVideoCall = async (id) => {
-      document.getElementById('video-chat').style.display = 'block';
+          switch (message.type) {
+            case 'offer':
+              await handleVideoOffer(message.offer, message.from);
+              break;
+            case 'answer':
+              await handleVideoAnswer(message.answer);
+              break;
+            case 'candidate':
+              await handleNewICECandidate(message.candidate);
+              break;
+            case 'invite':
+              const accept = confirm(`${message.from} vous invite à une visioconférence. Acceptez-vous ?`);
+              if (accept) {
+                startVideoCall(message.from);
+              }
+              break;
+              case 'update':
+                break;
+            default:
+              console.warn('Unknown message type:', message.type);
+          }
+        };
+        ws.onclose = () => {
+          console.log('WebSocket disconnected');
+        };
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+        };
 
-      peerConnection = new RTCPeerConnection(configuration);
-
-      peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-          ws.send(JSON.stringify({ type: 'candidate', candidate: event.candidate, to: id }));
-        }
+        window.addEventListener('beforeunload', () => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            const data = {
+              id: userId,
+              type: 'disconnect'
+            };
+            ws.send(JSON.stringify(data));
+          }
+        });
       };
 
-      peerConnection.ontrack = event => {
-        document.getElementById('remote-video').srcObject = event.streams[0];
-      };
+      const startVideoCall = async (id) => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    document.getElementById('local-video').srcObject = stream;
+    document.getElementById('video-chat').style.display = 'block';
 
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      document.getElementById('local-video').srcObject = stream;
-      stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+    peerConnection = new RTCPeerConnection(configuration);
 
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
+    stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
-      ws.send(JSON.stringify({ type: 'offer', offer: offer, to: id }));
-    };
-
-    const handleVideoOffer = async (offer, from) => {
-      peerConnection = new RTCPeerConnection(configuration);
-
-      peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-          ws.send(JSON.stringify({ type: 'candidate', candidate: event.candidate, to: from }));
-        }
-      };
-
-      peerConnection.ontrack = event => {
-        document.getElementById('remote-video').srcObject = event.streams[0];
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      document.getElementById('local-video').srcObject = stream;
-      stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
-
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-
-      ws.send(JSON.stringify({ type: 'answer', answer: answer, to: from }));
-    };
-
-    const handleVideoAnswer = async (answer) => {
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-    };
-
-    const handleNewICECandidate = async (candidate) => {
-      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    };
-
-    const endVideoCall = () => {
-      peerConnection.close();
-      peerConnection = null;
-      document.getElementById('video-chat').style.display = 'none';
-      document.getElementById('local-video').srcObject = null;
-      document.getElementById('remote-video').srcObject = null;
-    };
-
-    ws.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      switch (message.type) {
-        case 'offer':
-          handleVideoOffer(message.offer, message.from);
-          break;
-        case 'answer':
-          handleVideoAnswer(message.answer);
-          break;
-        case 'candidate':
-          handleNewICECandidate(message.candidate);
-          break;
+    peerConnection.onicecandidate = event => {
+      if (event.candidate) {
+        console.log('Sending ICE candidate:', event.candidate);
+        ws.send(JSON.stringify({ type: 'candidate', candidate: event.candidate, to: id }));
       }
     };
 
-    // Fetch user positions every 5 seconds
-    setInterval(fetchUserPositions, 5000);
+    peerConnection.ontrack = event => {
+      const remoteStream = event.streams[0];
+      console.log('Remote Stream:', remoteStream);
 
-    // Initial fetch
-    fetchUserPositions();
+      const remoteVideo = document.getElementById('remote-video');
+      if (remoteVideo) {
+        remoteVideo.srcObject = remoteStream;
+        console.log('Remote video element found and stream assigned.');
+      } else {
+        console.error('Remote video element not found.');
+      }
+    };
+
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    console.log('Local Description Set with Offer:', offer);
+
+    ws.send(JSON.stringify({ type: 'offer', offer: offer, to: id }));
+  } catch (error) {
+    console.error('Error starting video call:', error);
+    alert('Erreur lors de l\'accès aux périphériques médias : ' + error.message);
+  }
+};
+
+const handleVideoOffer = async (offer, from) => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    document.getElementById('local-video').srcObject = stream;
+    document.getElementById('video-chat').style.display = 'block';
+
+    peerConnection = new RTCPeerConnection(configuration);
+
+    stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+    peerConnection.onicecandidate = event => {
+      if (event.candidate) {
+        console.log('Sending ICE candidate:', event.candidate);
+        ws.send(JSON.stringify({ type: 'candidate', candidate: event.candidate, to: from }));
+      }
+    };
+
+    peerConnection.ontrack = event => {
+      const remoteStream = event.streams[0];
+      console.log('Remote Stream:', remoteStream);
+
+      const remoteVideo = document.getElementById('remote-video');
+      if (remoteVideo) {
+        remoteVideo.srcObject = remoteStream;
+        console.log('Remote video element found and stream assigned.');
+      } else {
+        console.error('Remote video element not found.');
+      }
+    };
+
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    console.log('Remote Description Set with Offer:', offer);
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    console.log('Local Description Set with Answer:', answer);
+
+    ws.send(JSON.stringify({ type: 'answer', answer: answer, to: from }));
+
+    // Process queued ICE candidates
+    while (iceCandidatesQueue.length) {
+      const candidate = iceCandidatesQueue.shift();
+      console.log('Adding queued ICE candidate:', candidate);
+      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+  } catch (error) {
+    console.error('Error handling video offer:', error);
+    alert('Erreur lors de l\'accès aux périphériques médias : ' + error.message);
+  }
+};
+
+const handleVideoAnswer = async (answer) => {
+  try {
+    console.log('Received Answer:', answer);
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+    console.log('Remote Description Set with Answer:', answer);
+
+    // Process queued ICE candidates
+    while (iceCandidatesQueue.length) {
+      const candidate = iceCandidatesQueue.shift();
+      console.log('Adding queued ICE candidate:', candidate);
+      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+  } catch (error) {
+    console.error('Error handling video answer:', error);
+  }
+};
+
+const handleNewICECandidate = async (candidate) => {
+  try {
+    console.log('New ICE candidate:', candidate);
+    if (peerConnection) {
+      if (peerConnection.remoteDescription) {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        console.log('Added ICE candidate:', candidate);
+      } else {
+        console.log('Queuing ICE candidate:', candidate);
+        iceCandidatesQueue.push(candidate);
+      }
+    } else {
+      console.log('Queuing ICE candidate (no peer connection):', candidate);
+      iceCandidatesQueue.push(candidate);
+    }
+  } catch (error) {
+    console.error('Error adding received ICE candidate', error);
+  }
+};
+
+const inviteToVideoCall = (id) => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'invite', to: id, from: userId }));
+    console.log('Invitation sent to:', id);
+  } else {
+    console.warn('WebSocket is not open. Cannot send invitation.');
+  }
+};
+
+const endVideoCall = () => {
+  if (peerConnection) {
+    peerConnection.close();
+    peerConnection = null;
+    console.log('Peer connection closed');
+    // Close camera and mic
+    const localVideo = document.getElementById('local-video');
+    if (localVideo.srcObject) {
+      localVideo.srcObject.getTracks().forEach(track => track.stop());
+      localVideo.srcObject = null;
+    }
+  }
+  document.getElementById('video-chat').style.display = 'none';
+  document.getElementById('local-video').srcObject = null;
+  document.getElementById('remote-video').srcObject = null;
+};
+
+
+
+// Fetch user positions every 5 seconds
+setInterval(fetchUserPositions, 5000);
+
+// Initial fetch
+fetchUserPositions();
+
   </script>
+
 </body>
 </html>
