@@ -10,6 +10,10 @@ Cette application est une plateforme de partage de position en temps réel et de
 - **Visioconférence avec WebRTC**: Appels vidéo entre utilisateurs.
 - **Utilisation de l'accéléromètre**: (à implémenter) Utilisation des données de l'accéléromètre pour diverses fonctionnalités.
 
+
+La visio conférence est presque fonctionnelle, impossible d'afficher le stream distant.
+Pas eu le temps de mettre l'acéléromètre en place.
+
 ## Structure du Projet
 
 - `index.html`: Fichier HTML principal de l'application.
@@ -122,7 +126,7 @@ Cette application est sous licence MIT. Veuillez consulter le fichier LICENSE po
 
 ## Contact
 
-Pour toute question ou assistance, veuillez contacter l'équipe de développement à `support@notre-application.com`.
+Pour toute question ou assistance, veuillez contacter l'équipe de développement à quelqu'un
 
 ---
 
