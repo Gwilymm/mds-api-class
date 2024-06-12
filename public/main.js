@@ -240,7 +240,6 @@ const startVideoCall = async (roomId) => {
 
 		peerConnection.onicecandidate = (event) => {
 			if (event.candidate) {
-				console.log("Sending ICE candidate:", event.candidate);
 				ws.send(JSON.stringify({ type: "candidate", candidate: event.candidate, roomId }));
 			}
 		};
@@ -262,6 +261,7 @@ const startVideoCall = async (roomId) => {
 
 
 
+
 const handleVideoOffer = async (offer, from) => {
 	try {
 		const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -274,7 +274,6 @@ const handleVideoOffer = async (offer, from) => {
 
 		peerConnection.onicecandidate = (event) => {
 			if (event.candidate) {
-				console.log("Sending ICE candidate:", event.candidate);
 				ws.send(JSON.stringify({ type: "candidate", candidate: event.candidate, to: from }));
 			}
 		};
@@ -299,6 +298,7 @@ const handleVideoOffer = async (offer, from) => {
 		alert("Erreur lors de l'accès aux périphériques médias : " + error.message);
 	}
 };
+
 
 
 
@@ -328,25 +328,23 @@ const handleVideoAnswer = async (answer) => {
 };
 
 
+
 const handleNewICECandidate = async (candidate) => {
 	try {
-		console.log("New ICE candidate:", candidate);
 		if (peerConnection) {
 			if (peerConnection.remoteDescription) {
 				await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-				console.log("Added ICE candidate:", candidate);
 			} else {
-				console.log("Queuing ICE candidate:", candidate);
 				iceCandidatesQueue.push(candidate);
 			}
 		} else {
-			console.log("Queuing ICE candidate (no peer connection):", candidate);
 			iceCandidatesQueue.push(candidate);
 		}
 	} catch (error) {
 		console.error("Error adding received ICE candidate", error);
 	}
 };
+
 
 
 
