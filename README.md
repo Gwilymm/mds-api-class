@@ -20,7 +20,7 @@ Pas eu le temps de mettre l'acéléromètre en place.
 - `server.js`: Fichier de serveur Node.js pour gérer les connexions WebSocket et les API RESTful.
 - `public/`: Dossier contenant les fichiers statiques (CSS, JavaScript, etc.).
 - `views/`: Dossier contenant les vues HTML.
-- `api/`: Dossier contenant les endpoints API RESTful.
+- `controllers/`: Dossier contenant les endpoints API RESTful.
 
 ## Prérequis
 
@@ -32,9 +32,8 @@ Pas eu le temps de mettre l'acéléromètre en place.
 1. Clonez le dépôt de l'application:
 
    ```bash
-   git clone https://github.com/votre-repo/application.git
-   cd application
-   ```
+   git clone https://github.com/Gwilymm/mds-api-class.git
+   cd mds-api-class
 
 2. Installez les dépendances:
 
@@ -55,7 +54,7 @@ Pas eu le temps de mettre l'acéléromètre en place.
 ### Interface Utilisateur
 
 - **Accueil**: Présente les fonctionnalités de l'application.
-- **Formulaire de connexion**: Entrez votre nom pour commencer.
+- **Formulaire de nom**: Entrez votre nom pour commencer.
 - **Carte des Utilisateurs**: Affiche la position des utilisateurs en temps réel sur une carte.
 - **Liste des Utilisateurs**: Affiche la liste des utilisateurs avec une option pour initier un appel vidéo.
 
