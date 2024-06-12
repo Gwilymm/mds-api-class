@@ -207,25 +207,25 @@ const initializeUser = async () => {
 		}
 	};
 
+
+
+
+
+
+	ws.onclose = () => {
+		console.log("WebSocket disconnected");
+	};
+	ws.onerror = (error) => {
+		console.error("WebSocket error:", error);
+	};
+
+	window.addEventListener("beforeunload", () => {
+		if (ws && ws.readyState === WebSocket.OPEN) {
+			const data = { id: userId, type: "disconnect" };
+			ws.send(JSON.stringify(data));
+		}
+	});
 };
-
-
-
-
-ws.onclose = () => {
-	console.log("WebSocket disconnected");
-};
-ws.onerror = (error) => {
-	console.error("WebSocket error:", error);
-};
-
-window.addEventListener("beforeunload", () => {
-	if (ws && ws.readyState === WebSocket.OPEN) {
-		const data = { id: userId, type: "disconnect" };
-		ws.send(JSON.stringify(data));
-	}
-});
-
 
 const startVideoCall = async (roomId) => {
 	try {
