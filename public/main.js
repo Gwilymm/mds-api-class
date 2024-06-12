@@ -159,6 +159,7 @@ const initializeUser = async () => {
 		if (geoPermission.state === "granted" || geoPermission.state === "prompt") {
 			navigator.geolocation.getCurrentPosition(successCallback, errorCallback);
 		} else {
+
 			alert("Géolocalisation refusée");
 		}
 	} catch (error) {
@@ -246,27 +247,18 @@ const startVideoCall = async (roomId) => {
 
 		peerConnection.ontrack = (event) => {
 			const remoteStream = event.streams[ 0 ];
-			console.log("Remote Stream:", remoteStream);
-
-			const remoteVideo = document.getElementById("remote-video");
-			if (remoteVideo) {
-				remoteVideo.srcObject = remoteStream;
-				console.log("Remote video element found and stream assigned.");
-			} else {
-				console.error("Remote video element not found.");
-			}
+			document.getElementById("remote-video").srcObject = remoteStream;
 		};
 
 		const offer = await peerConnection.createOffer();
 		await peerConnection.setLocalDescription(offer);
-		console.log("Local Description Set with Offer:", offer);
-
 		ws.send(JSON.stringify({ type: "offer", offer, roomId }));
 	} catch (error) {
 		console.error("Error starting video call:", error);
 		alert("Erreur lors de l'accès aux périphériques médias : " + error.message);
 	}
 };
+
 
 
 
@@ -289,29 +281,17 @@ const handleVideoOffer = async (offer, from) => {
 
 		peerConnection.ontrack = (event) => {
 			const remoteStream = event.streams[ 0 ];
-			console.log("Remote Stream:", remoteStream);
-
-			const remoteVideo = document.getElementById("remote-video");
-			if (remoteVideo) {
-				remoteVideo.srcObject = remoteStream;
-				console.log("Remote video element found and stream assigned.");
-			} else {
-				console.error("Remote video element not found.");
-			}
+			document.getElementById("remote-video").srcObject = remoteStream;
 		};
 
 		await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-		console.log("Remote Description Set with Offer:", offer);
 		const answer = await peerConnection.createAnswer();
 		await peerConnection.setLocalDescription(answer);
-		console.log("Local Description Set with Answer:", answer);
-
 		ws.send(JSON.stringify({ type: "answer", answer, to: from }));
 
 		// Process queued ICE candidates
 		while (iceCandidatesQueue.length) {
 			const candidate = iceCandidatesQueue.shift();
-			console.log("Adding queued ICE candidate:", candidate);
 			await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
 		}
 	} catch (error) {
@@ -335,20 +315,18 @@ const joinRoom = (roomId) => {
 
 const handleVideoAnswer = async (answer) => {
 	try {
-		console.log("Received Answer:", answer);
 		await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-		console.log("Remote Description Set with Answer:", answer);
 
 		// Process queued ICE candidates
 		while (iceCandidatesQueue.length) {
 			const candidate = iceCandidatesQueue.shift();
-			console.log("Adding queued ICE candidate:", candidate);
 			await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
 		}
 	} catch (error) {
 		console.error("Error handling video answer:", error);
 	}
 };
+
 
 const handleNewICECandidate = async (candidate) => {
 	try {
