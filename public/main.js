@@ -225,7 +225,7 @@ window.addEventListener("beforeunload", () => {
 		ws.send(JSON.stringify(data));
 	}
 });
-};
+
 
 const startVideoCall = async (roomId) => {
 	try {
