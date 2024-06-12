@@ -5,7 +5,6 @@ const bodyParser = require('body-parser');
 const path = require('path');
 let users = []; // Initialiser la liste des utilisateurs
 
-
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -42,7 +41,20 @@ wss.on('connection', (ws) => {
 		} else if (data.type === 'invite') {
 			const targetUser = users.find(user => user.id === data.to);
 			if (targetUser) {
-				targetUser.ws.send(JSON.stringify(data));
+				const roomId = `room-${Date.now()}`;
+				targetUser.ws.send(JSON.stringify({ ...data, roomId }));
+			}
+		} else if (data.type === 'create-room') {
+			const roomId = data.roomId;
+			const targetUser = users.find(user => user.id === data.to);
+			if (targetUser) {
+				targetUser.ws.send(JSON.stringify({ type: 'room-created', roomId }));
+			}
+		} else if (data.type === 'join-room') {
+			const roomId = data.roomId;
+			const targetUser = users.find(user => user.id === data.from);
+			if (targetUser) {
+				targetUser.ws.send(JSON.stringify({ type: 'user-connected', roomId, from: data.from }));
 			}
 		} else if (data.type === 'offer' || data.type === 'answer' || data.type === 'candidate') {
 			const targetUser = users.find(user => user.id === data.to);
@@ -65,13 +77,6 @@ wss.on('connection', (ws) => {
 		});
 	});
 
-	/* This part of the code is handling the event when a WebSocket connection is closed. When a WebSocket
-	connection is closed, it removes the user associated with that connection from the `users` array.
-	Then it creates a new array `usersWithoutWS` that contains the user data without the WebSocket
-	connection. After that, it iterates over all WebSocket clients (`wss.clients`) and sends the
-	updated user data (without the closed connection) to each client that is still open and ready to
-	receive messages. This ensures that all connected clients are updated with the latest user data
-	after a WebSocket connection is closed. */
 	ws.on('close', () => {
 		users = users.filter(user => user.ws !== ws);
 
@@ -89,6 +94,7 @@ wss.on('connection', (ws) => {
 		});
 	});
 });
+
 const port = 3000;
 server.listen(port, () => {
 	console.log(`Server is running on port ${port}`);

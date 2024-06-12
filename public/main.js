@@ -5,7 +5,11 @@ let peerConnection = null;
 let iceCandidatesQueue = [];
 
 const configuration = {
-	iceServers: [ { urls: "stun:stun.l.google.com:19302" } ],
+	iceServers: [ { urls: 'stun:stun.l.google.com:19302' },
+	{ urls: 'stun:stun1.l.google.com:19302' },
+	{ urls: 'stun:stun2.l.google.com:19302' },
+	{ urls: 'stun:stun3.l.google.com:19302' },
+	{ urls: 'stun:stun4.l.google.com:19302' }, ],
 };
 
 L.Icon.Default.imagePath = "https://unpkg.com/leaflet@1.7.1/dist/images/";
@@ -269,7 +273,7 @@ const initializeUser = async () => {
 	Depending on the message type, different actions are taken: */
 	ws.onmessage = async (event) => {
 		const message = JSON.parse(event.data);
-		console.log("WebSocket message received:", message);
+
 
 		switch (message.type) {
 			case "offer":
@@ -552,7 +556,7 @@ const endVideoCall = () => {
 };
 
 // Fetch user positions every 5 seconds
-setInterval(fetchUserPositions, 5000);
+setInterval(fetchUserPositions, 500);
 
 // Initial fetch
 fetchUserPositions();
