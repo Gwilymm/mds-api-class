@@ -177,36 +177,34 @@ const initializeUser = async () => {
 		const message = JSON.parse(event.data);
 
 		switch (message.type) {
-			case "offer":
+			case 'offer':
 				await handleVideoOffer(message.offer, message.from);
 				break;
-			case "answer":
+			case 'answer':
 				await handleVideoAnswer(message.answer);
 				break;
-			case "candidate":
+			case 'candidate':
 				await handleNewICECandidate(message.candidate);
 				break;
-			case "invite":
+			case 'invite':
 				const accept = confirm(`${message.from} vous invite à une visioconférence. Acceptez-vous ?`);
 				if (accept) {
 					joinRoom(message.roomId);
 					startVideoCall(message.roomId);
 				}
 				break;
-			case "room-created":
+			case 'room-created':
 				joinRoom(message.roomId);
 				startVideoCall(message.roomId);
 				break;
-			case "user-connected":
+			case 'user-connected':
 				console.log(`User connected to room: ${message.roomId}`);
 				break;
-			case "update":
-				updateUserPositions(message.users);
-				break;
 			default:
-				console.warn("Unknown message type:", message.type);
+				console.warn('Unknown message type:', message.type);
 		}
 	};
+
 
 
 
@@ -331,19 +329,14 @@ const handleVideoAnswer = async (answer) => {
 
 const handleNewICECandidate = async (candidate) => {
 	try {
-		if (peerConnection) {
-			if (peerConnection.remoteDescription) {
-				await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-			} else {
-				iceCandidatesQueue.push(candidate);
-			}
-		} else {
-			iceCandidatesQueue.push(candidate);
-		}
+		const iceCandidate = new RTCIceCandidate(candidate);
+		await peerConnection.addIceCandidate(iceCandidate);
+		console.log('Added ICE candidate:', iceCandidate);
 	} catch (error) {
-		console.error("Error adding received ICE candidate", error);
+		console.error('Error adding received ICE candidate', error);
 	}
 };
+
 
 
 
