@@ -207,21 +207,24 @@ const initializeUser = async () => {
 		}
 	};
 
+};
 
 
-	ws.onclose = () => {
-		console.log("WebSocket disconnected");
-	};
-	ws.onerror = (error) => {
-		console.error("WebSocket error:", error);
-	};
 
-	window.addEventListener("beforeunload", () => {
-		if (ws && ws.readyState === WebSocket.OPEN) {
-			const data = { id: userId, type: "disconnect" };
-			ws.send(JSON.stringify(data));
-		}
-	});
+
+ws.onclose = () => {
+	console.log("WebSocket disconnected");
+};
+ws.onerror = (error) => {
+	console.error("WebSocket error:", error);
+};
+
+window.addEventListener("beforeunload", () => {
+	if (ws && ws.readyState === WebSocket.OPEN) {
+		const data = { id: userId, type: "disconnect" };
+		ws.send(JSON.stringify(data));
+	}
+});
 };
 
 const startVideoCall = async (roomId) => {
@@ -264,6 +267,7 @@ const startVideoCall = async (roomId) => {
 		alert("Erreur lors de l'accès aux périphériques médias : " + error.message);
 	}
 };
+
 
 
 const handleVideoOffer = async (offer, from) => {
@@ -317,6 +321,7 @@ const handleVideoOffer = async (offer, from) => {
 };
 
 
+
 const joinRoom = (roomId) => {
 	if (ws && ws.readyState === WebSocket.OPEN) {
 		ws.send(JSON.stringify({ type: 'join-room', roomId }));
@@ -366,6 +371,7 @@ const handleNewICECandidate = async (candidate) => {
 };
 
 
+
 const inviteToVideoCall = (id) => {
 	if (ws && ws.readyState === WebSocket.OPEN) {
 		const roomId = `room-${Date.now()}`;
@@ -375,6 +381,7 @@ const inviteToVideoCall = (id) => {
 		console.warn("WebSocket is not open. Cannot send invitation.");
 	}
 };
+
 
 
 
