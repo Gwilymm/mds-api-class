@@ -19,14 +19,14 @@ app.get('/api/users', (req, res) => {
 
 // Route racine
 app.get('/', (req, res) => {
-	res.sendFile(path.join(__dirname, 'views', 'index.html'));
+	res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // WebSocket pour les mises à jour en temps réel
 wss.on('connection', (ws) => {
 	ws.on('message', (message) => {
 		const data = JSON.parse(message);
-		console.log('Message received from client:', data);
+
 
 		if (data.type === 'update') {
 			const user = users.find(u => u.id === data.id);
@@ -38,18 +38,22 @@ wss.on('connection', (ws) => {
 			}
 		} else if (data.type === 'disconnect') {
 			users = users.filter(user => user.id !== data.id);
-		} else if (data.type === 'invite') {
-			const targetUser = users.find(user => user.id === data.to);
+		} else if (data.type === 'invite_to_call') {
+			const targetUser = users.find(user => user.id === data.invitedUserId);
 			if (targetUser) {
-				const roomId = `room-${Date.now()}`;
-				ws.send(JSON.stringify({ type: 'room-created', roomId }));
-				targetUser.ws.send(JSON.stringify({ type: 'invite', from: data.from, roomId }));
+				const roomId = data.roomId;
+				targetUser.ws.send(JSON.stringify({ type: 'invite_to_call', roomId, inviterId: data.inviterId }));
 			}
-		} else if (data.type === 'join-room') {
-			const roomId = data.roomId;
-			ws.send(JSON.stringify({ type: 'user-connected', roomId }));
-		} else if (data.type === 'offer' || data.type === 'answer' || data.type === 'candidate') {
-			const targetUser = users.find(user => user.id === data.to);
+		} else if (data.type === 'call_accepted') {
+			const inviter = users.find(user => user.id === data.inviterId);
+			if (inviter) {
+				inviter.ws.send(JSON.stringify({ type: 'call_accepted', roomId: data.roomId }));
+			}
+		} else if (data.type === 'webrtc_offer' || data.type === 'webrtc_answer' || data.type === 'webrtc_ice_candidate') {
+			console.log("passe par mes couilles");
+			console.log(data);
+			const targetUser = users.find(user => user.id === (data.type === 'webrtc_offer' ? data.targerId : data.inviterId));
+			console.log(targetUser);
 			if (targetUser) {
 				targetUser.ws.send(JSON.stringify(data));
 			}
