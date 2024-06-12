@@ -198,11 +198,13 @@ const initializeUser = async () => {
 				console.log(`User connected to room: ${message.roomId}`);
 				break;
 			case "update":
+				updateUserPositions(message.users);
 				break;
 			default:
 				console.warn("Unknown message type:", message.type);
 		}
 	};
+
 
 	ws.onclose = () => {
 		console.log("WebSocket disconnected");
@@ -312,12 +314,14 @@ const handleVideoOffer = async (offer, from) => {
 
 const joinRoom = (roomId, from) => {
 	if (ws && ws.readyState === WebSocket.OPEN) {
-		ws.send(JSON.stringify({ type: "join-room", roomId, from }));
+		ws.send(JSON.stringify({ type: "join-room", roomId, from: userId }));
 		console.log("Joining room:", roomId);
+		startVideoCall(roomId);
 	} else {
 		console.warn("WebSocket is not open. Cannot join room.");
 	}
 };
+
 
 const handleVideoAnswer = async (answer) => {
 	try {
@@ -365,6 +369,7 @@ const inviteToVideoCall = (id) => {
 		console.warn("WebSocket is not open. Cannot send invitation.");
 	}
 };
+
 
 const endVideoCall = () => {
 	if (peerConnection) {

@@ -24,12 +24,12 @@ app.get('/', (req, res) => {
 
 // WebSocket pour les mises à jour en temps réel
 wss.on('connection', (ws) => {
-	ws.on('message', (message) => {
-		const data = JSON.parse(message);
-		console.log('Message received from client:', data);
+	wss.on('connection', (ws) => {
+		ws.on('message', (message) => {
+			const data = JSON.parse(message);
+			console.log('Message received from client:', data);
 
-		switch (data.type) {
-			case 'update': {
+			if (data.type === 'update') {
 				const user = users.find(u => u.id === data.id);
 				if (user) {
 					user.position = data.position;
@@ -37,58 +37,65 @@ wss.on('connection', (ws) => {
 				} else {
 					users.push({ id: data.id, name: data.name, position: data.position, ws });
 				}
-				break;
-			}
-			case 'disconnect':
+			} else if (data.type === 'disconnect') {
 				users = users.filter(user => user.id !== data.id);
-				break;
-			case 'invite':
-				const targetUserInvite = users.find(user => user.id === data.to);
-				if (targetUserInvite) {
+			} else if (data.type === 'invite') {
+				const targetUser = users.find(user => user.id === data.to);
+				if (targetUser) {
 					const roomId = `room-${Date.now()}`;
-					targetUserInvite.ws.send(JSON.stringify({ ...data, roomId }));
+					targetUser.ws.send(JSON.stringify({ ...data, roomId }));
 				}
-				break;
-			case 'create-room':
-				const roomIdCreate = data.roomId;
-				const targetUserCreate = users.find(user => user.id === data.to);
-				if (targetUserCreate) {
-					targetUserCreate.ws.send(JSON.stringify({ type: 'room-created', roomId: roomIdCreate }));
+			} else if (data.type === 'create-room') {
+				const roomId = data.roomId;
+				const targetUser = users.find(user => user.id === data.to);
+				if (targetUser) {
+					targetUser.ws.send(JSON.stringify({ type: 'room-created', roomId }));
 				}
-				break;
-			case 'join-room':
-				const roomIdJoin = data.roomId;
-				const targetUserJoin = users.find(user => user.id === data.from);
-				if (targetUserJoin) {
-					targetUserJoin.ws.send(JSON.stringify({ type: 'user-connected', roomId: roomIdJoin, from: data.from }));
+			} else if (data.type === 'join-room') {
+				const roomId = data.roomId;
+				const targetUser = users.find(user => user.id === data.from);
+				if (targetUser) {
+					targetUser.ws.send(JSON.stringify({ type: 'user-connected', roomId, from: data.from }));
 				}
-				break;
-			case 'offer':
-			case 'answer':
-			case 'candidate':
-				const targetUserSignal = users.find(user => user.id === data.to);
-				if (targetUserSignal) {
-					targetUserSignal.ws.send(JSON.stringify(data));
+			} else if (data.type === 'offer' || data.type === 'answer' || data.type === 'candidate') {
+				const targetUser = users.find(user => user.id === data.to);
+				if (targetUser) {
+					targetUser.ws.send(JSON.stringify(data));
 				}
-				break;
-			default:
-				// Handle unknown types
-				console.log(`Unhandled message type: ${data.type}`);
-		}
-
-		// Broadcast new positions to all connected clients
-		const usersWithoutWS = users.map(user => ({
-			id: user.id,
-			name: user.name,
-			position: user.position
-		}));
-
-		wss.clients.forEach(client => {
-			if (client.readyState === WebSocket.OPEN) {
-				client.send(JSON.stringify(usersWithoutWS));
 			}
+
+			// Diffuser les nouvelles positions à tous les clients connectés
+			const usersWithoutWS = users.map(user => ({
+				id: user.id,
+				name: user.name,
+				position: user.position
+			}));
+
+			wss.clients.forEach(client => {
+				if (client.readyState === WebSocket.OPEN) {
+					client.send(JSON.stringify(usersWithoutWS));
+				}
+			});
+		});
+
+		ws.on('close', () => {
+			users = users.filter(user => user.ws !== ws);
+
+			// Diffuser les nouvelles positions à tous les clients connectés
+			const usersWithoutWS = users.map(user => ({
+				id: user.id,
+				name: user.name,
+				position: user.position
+			}));
+
+			wss.clients.forEach(client => {
+				if (client.readyState === WebSocket.OPEN) {
+					client.send(JSON.stringify(usersWithoutWS));
+				}
+			});
 		});
 	});
+
 
 	ws.on('close', () => {
 		users = users.filter(user => user.ws !== ws);
