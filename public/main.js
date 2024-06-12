@@ -13,7 +13,7 @@ const configuration = {
 		{ urls: 'stun:stun4.l.google.com:19302' },
 	],
 };
-
+L.Icon.Default.imagePath = "https://unpkg.com/leaflet@1.7.1/dist/images/";
 const map = L.map("map").setView([ 51.505, -0.09 ], 13);
 
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
