@@ -4,6 +4,10 @@
 
 Cette application est une plateforme de partage de position en temps réel et de visioconférence utilisant WebRTC et l'accéléromètre. Elle permet aux utilisateurs de partager leur position actuelle sur une carte interactive, de voir la position des autres utilisateurs, et d'initier des appels vidéo.
 
+## Doc
+
+https://gwilymm.github.io/mds-api-class/
+
 ## Fonctionnalités
 
 - **Partage de position en temps réel**: Suivi en temps réel de la position des utilisateurs sur une carte interactive.
@@ -54,7 +58,7 @@ Pas eu le temps de mettre l'acéléromètre en place.
 ### Interface Utilisateur
 
 - **Accueil**: Présente les fonctionnalités de l'application.
-- **Formulaire de nom**: Entrez votre nom pour commencer.
+- **Formulaire**: Entrez votre nom pour commencer.
 - **Carte des Utilisateurs**: Affiche la position des utilisateurs en temps réel sur une carte.
 - **Liste des Utilisateurs**: Affiche la liste des utilisateurs avec une option pour initier un appel vidéo.
 
