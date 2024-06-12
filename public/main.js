@@ -188,10 +188,12 @@ const initializeUser = async () => {
 			case "invite":
 				const accept = confirm(`${message.from} vous invite à une visioconférence. Acceptez-vous ?`);
 				if (accept) {
-					joinRoom(message.roomId, message.from);
+					joinRoom(message.roomId);
+					startVideoCall(message.roomId);
 				}
 				break;
 			case "room-created":
+				joinRoom(message.roomId);
 				startVideoCall(message.roomId);
 				break;
 			case "user-connected":
@@ -204,6 +206,7 @@ const initializeUser = async () => {
 				console.warn("Unknown message type:", message.type);
 		}
 	};
+
 
 
 	ws.onclose = () => {
@@ -262,6 +265,7 @@ const startVideoCall = async (roomId) => {
 	}
 };
 
+
 const handleVideoOffer = async (offer, from) => {
 	try {
 		const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -312,15 +316,16 @@ const handleVideoOffer = async (offer, from) => {
 	}
 };
 
-const joinRoom = (roomId, from) => {
+
+const joinRoom = (roomId) => {
 	if (ws && ws.readyState === WebSocket.OPEN) {
-		ws.send(JSON.stringify({ type: "join-room", roomId, from: userId }));
+		ws.send(JSON.stringify({ type: 'join-room', roomId }));
 		console.log("Joining room:", roomId);
-		startVideoCall(roomId);
 	} else {
 		console.warn("WebSocket is not open. Cannot join room.");
 	}
 };
+
 
 
 const handleVideoAnswer = async (answer) => {
@@ -360,15 +365,17 @@ const handleNewICECandidate = async (candidate) => {
 	}
 };
 
+
 const inviteToVideoCall = (id) => {
 	if (ws && ws.readyState === WebSocket.OPEN) {
 		const roomId = `room-${Date.now()}`;
-		ws.send(JSON.stringify({ type: "invite", to: id, from: userId, roomId }));
+		ws.send(JSON.stringify({ type: 'invite', to: id, from: userId, roomId }));
 		console.log("Invitation sent to:", id);
 	} else {
 		console.warn("WebSocket is not open. Cannot send invitation.");
 	}
 };
+
 
 
 const endVideoCall = () => {
