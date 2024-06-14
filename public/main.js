@@ -1,250 +1,195 @@
+L.Icon.Default.imagePath = "https://unpkg.com/leaflet@1.7.1/dist/images/";
+const map = L.map("map").setView([ 51.505, -0.09 ], 13);
+
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+	maxZoom: 19,
+}).addTo(map);
+
+const markers = {};
+
+const updateUserPositions = (users) => {
+	if (!Array.isArray(users)) {
+		console.error("La réponse de l'API n'est pas un tableau d'utilisateurs:", users);
+		return;
+	}
+	const userList = document.getElementById("user-list-ul");
+	userList.innerHTML = ""; // Clear the list
+	users.forEach((user) => {
+		if (markers[ user.id ]) {
+			markers[ user.id ].setLatLng([ user.position.lat, user.position.lng ]);
+		} else {
+			markers[ user.id ] = L.marker([ user.position.lat, user.position.lng ])
+				.addTo(map)
+				.bindPopup(user.name)
+				.openPopup();
+		}
+		// Add user to the list
+		const li = document.createElement("li");
+		li.className = "flex justify-between items-center p-2 bg-gray-100 rounded shadow";
+		li.innerHTML = `<span>${user.name}</span> <button onclick="Visio.inviteToVideoCall('${user.id}')" class="bg-green-500 text-white px-2 py-1 rounded">Visio</button>`;
+		userList.appendChild(li);
+	});
+};
+
+const fetchUserPositions = async () => {
+	try {
+		const response = await fetch("/api/users", { cache: "no-cache" });
+		if (!response.ok) {
+			throw new Error("Erreur lors de la récupération des utilisateurs: " + response.statusText);
+		}
+		const users = await response.json();
+		updateUserPositions(users);
+	} catch (error) {
+		console.error("Erreur lors de la récupération des utilisateurs:", error);
+	}
+};
+
 let ws;
 let username;
 let userId;
-let rtcPeerConnection;
-let localStream;
-let remoteStream;
-let roomId;
-let invitedUserId; // Ajoutez cette variable globale pour stocker invitedUserId
-let inviterId; // Ajoutez cette variable globale pour stocker inviterId
 
-const mediaConstraints = {
-	audio: true,
-	video: { width: 1280, height: 720 },
-};
-const iceServers = {
-	iceServers: [
-		{ urls: "stun:stun.l.google.com:19302" },
-		{ urls: "stun:stun1.l.google.com:19302" },
-		{ urls: "stun:stun2.l.google.com:19302" },
-		{ urls: "stun:stun3.l.google.com:19302" },
-		{ urls: "stun:stun4.l.google.com:19302" },
-		{
-			urls: 'turn:turn.xirsys.com',
-			username: 'YOUR_XIRSYS_USERNAME',
-			credential: 'YOUR_XIRSYS_CREDENTIAL'
-		}
-	],
-};
-
-function initializeWebSocket() {
-	ws = new WebSocket('wss://gwilym.is-a.dev'); // Remplacez par l'URL de votre serveur WebSocket
+const initializeWebSocket = () => {
+	ws = new WebSocket("wss://gwilym.is-a.dev");
 
 	ws.onopen = () => {
-		console.log('WebSocket connection opened');
+		console.log("WebSocket connection opened");
 	};
 
-	ws.onmessage = async (message) => {
-		const data = JSON.parse(message.data);
-		// Journal pour tous les messages WebSocket
-
-		if (data.type === 'update') {
-			fetchUserPositions();
-		} else if (data.type === 'invite_to_call') {
-			console.log('Received invite to call:', data);
-			handleIncomingCall(data.roomId, data.inviterId);
-		} else if (data.type === 'call_accepted') {
-			console.log('Call accepted by remote user:', data);
-			await handleCallAccepted(data.roomId, data.inviterId);
-		} else if (data.type === 'webrtc_offer') {
-			console.log("mes couilles");
-			console.log('Received webrtc_offer:', data.sdp);  // Journal de l'offre WebRTC
-			if (!rtcPeerConnection) {
-				initializePeerConnection();
+	ws.onmessage = (event) => {
+		const data = JSON.parse(event.data);
+		if (Array.isArray(data)) {
+			updateUserPositions(data);
+		} else {
+			if (data.type.includes('webrtc') || data.type.includes('call')) {
+				Visio.handleWebSocketMessage(data);
+			} else {
+				handleWebSocketMessage(data);
 			}
-			await handleOffer(data.sdp, data.roomId, data.inviterId);
-		} else if (data.type === 'webrtc_answer') {
-			console.log('Received webrtc_answer:', data.sdp);
-			await handleAnswer(data.sdp);
-		} else if (data.type === 'webrtc_ice_candidate') {
-			const candidate = new RTCIceCandidate({
-				sdpMLineIndex: data.label,
-				candidate: data.candidate,
-			});
-			console.log('Received ICE candidate:', candidate);
-			await rtcPeerConnection.addIceCandidate(candidate);
 		}
-	};
-
-	ws.onerror = (error) => {
-		console.error('WebSocket error:', error);
 	};
 
 	ws.onclose = () => {
-		console.log('WebSocket connection closed');
+		console.warn("WebSocket connection closed. Reconnecting...");
+		setTimeout(initializeWebSocket, 1000);
 	};
-}
 
-window.initializeWebSocket = initializeWebSocket;
+	ws.onerror = (error) => {
+		console.error("WebSocket error:", error);
+	};
+};
 
-async function inviteToVideoCall(invitedUserIdParam) {
-	roomId = `room-${Date.now()}`;
-	invitedUserId = invitedUserIdParam; // Assigner la valeur passée à la variable globale
-	ws.send(JSON.stringify({ type: 'invite_to_call', roomId, inviterId: userId, invitedUserId }));
-	console.log('Invitation envoyée. Connexion en cours...');
-	await startCall(true, roomId);  // Lancer immédiatement la connexion locale à la salle
-}
-
-async function handleIncomingCall(roomId, inviterIdParam) {
-	const accept = confirm('Vous avez une invitation à rejoindre un appel vidéo. Voulez-vous accepter?');
-	if (accept) {
-		inviterId = inviterIdParam; // Assigner la valeur passée à la variable globale
-		ws.send(JSON.stringify({ type: 'call_accepted', roomId, inviterId }));
-		await startCall(false, roomId);
+const sendUserPosition = (position) => {
+	if (ws && ws.readyState === WebSocket.OPEN) {
+		const data = {
+			id: userId,
+			name: username,
+			position: {
+				lat: position.coords.latitude,
+				lng: position.coords.longitude,
+			},
+			type: "update",
+		};
+		ws.send(JSON.stringify(data));
 	} else {
-		alert('Appel refusé');
+		console.warn("WebSocket is not open. Cannot send position.");
 	}
-}
+};
 
-async function handleCallAccepted(roomId, inviterIdParam) {
-	inviterId = inviterIdParam; // Assigner la valeur passée à la variable globale
-	console.log('Call accepted. Starting call as inviter.');
-	await startCall(true, roomId);
-}
+const updateUserPosition = (position) => {
+	if (ws && ws.readyState === WebSocket.OPEN) {
+		const data = {
+			id: userId,
+			name: username,
+			position: {
+				lat: position.coords.latitude,
+				lng: position.coords.longitude,
+			},
+			type: "update",
+		};
+		ws.send(JSON.stringify(data));
 
-async function startCall(isInviter, roomId) {
-	console.log(`Starting call in room: ${roomId} as ${isInviter ? 'inviter' : 'invitee'}`);
-	showVideoConference();  // Assurez-vous que la modal est affichée
-	await setLocalStream(mediaConstraints);
-	initializePeerConnection();  // Réinitialiser la connexion RTC avant de créer une offre/réponse
-	addLocalTracks(rtcPeerConnection);
-	console.log('Local tracks added.');
-	if (isInviter) {
-		console.log('Creating offer as inviter');
-		await createOffer(roomId);
-	}
-}
-
-function initializePeerConnection() {
-	if (rtcPeerConnection) {
-		rtcPeerConnection.close();
-		rtcPeerConnection = null;
-	}
-	rtcPeerConnection = new RTCPeerConnection(iceServers);
-	rtcPeerConnection.ontrack = setRemoteStream;
-	rtcPeerConnection.onicecandidate = sendIceCandidate;
-	console.log('PeerConnection initialized');
-}
-
-async function handleOffer(sdp, roomId, inviterId) {
-	try {
-		if (rtcPeerConnection.signalingState !== "stable") {
-			await Promise.all([
-				rtcPeerConnection.setLocalDescription({ type: "rollback" }),
-				rtcPeerConnection.setRemoteDescription(new RTCSessionDescription(sdp))
-			]);
+		if (markers[ userId ]) {
+			markers[ userId ].setLatLng([ position.coords.latitude, position.coords.longitude ]);
 		} else {
-			await rtcPeerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+			markers[ userId ] = L.marker([ position.coords.latitude, position.coords.longitude ])
+				.addTo(map)
+				.bindPopup(username)
+				.openPopup();
 		}
-		await createAnswer(roomId, inviterId);
-	} catch (error) {
-		console.error('Error handling offer:', error);
+		map.setView([ position.coords.latitude, position.coords.longitude ], map.getZoom());
+	} else {
+		console.warn("WebSocket is not open. Cannot update position.");
 	}
-}
+};
 
-async function handleAnswer(sdp) {
-	try {
-		if (rtcPeerConnection.signalingState === "have-local-offer") {
-			await rtcPeerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
-		}
-	} catch (error) {
-		console.error('Error handling answer:', error);
-	}
-}
+const successCallback = (position) => {
+	sendUserPosition(position);
+	map.setView([ position.coords.latitude, position.coords.longitude ], 13);
 
-function showVideoConference() {
-	document.getElementById('video-chat').style.display = 'block';
-}
-
-function endVideoCall() {
-	document.getElementById('video-chat').style.display = 'none';
-	if (rtcPeerConnection) {
-		rtcPeerConnection.close();
-		rtcPeerConnection = null;
+	if (!markers[ userId ]) {
+		markers[ userId ] = L.marker([ position.coords.latitude, position.coords.longitude ])
+			.addTo(map)
+			.bindPopup(username)
+			.openPopup();
 	}
 
-	document.getElementById('local-video').srcObject = null;
-	document.getElementById('remote-video').srcObject = null;
-}
+	setInterval(() => {
+		navigator.geolocation.getCurrentPosition(updateUserPosition, errorCallback, {
+			enableHighAccuracy: true
+		});
+	}, 1000);
+};
 
-async function setLocalStream(mediaConstraints) {
-	try {
-		localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
-		console.log('Local stream obtained:', localStream);
-		document.getElementById('local-video').srcObject = localStream;
-	} catch (error) {
-		console.error('Could not get user media', error);
+const errorCallback = (error) => {
+	const errorMessageElement = document.getElementById("error-message");
+	switch (error.code) {
+		case error.PERMISSION_DENIED:
+			errorMessageElement.textContent = "L'utilisateur a refusé la demande de géolocalisation.";
+			break;
+		case error.POSITION_UNAVAILABLE:
+			errorMessageElement.textContent = "Les informations de localisation sont indisponibles.";
+			break;
+		case error.TIMEOUT:
+			errorMessageElement.textContent = "La demande de localisation a expiré.";
+			break;
+		case error.UNKNOWN_ERROR:
+			errorMessageElement.textContent = "Une erreur inconnue s'est produite.";
+			break;
 	}
-}
+	console.error(error);
+};
 
-function addLocalTracks(rtcPeerConnection) {
-	if (!localStream) {
-		console.error('Local stream is not available.');
+const initializeUser = async () => {
+	username = document.getElementById("username").value.trim();
+	if (!username) {
+		alert("Veuillez entrer un nom");
 		return;
 	}
-	localStream.getTracks().forEach((track) => {
-		rtcPeerConnection.addTrack(track, localStream);
-		console.log('Added local track:', track);
-	});
-}
+	userId = "user-" + Date.now();
+	document.getElementById("user-form").style.display = "none";
 
-async function createOffer(roomId) {
 	try {
-		console.log('Creating offer...');
-		const sessionDescription = await rtcPeerConnection.createOffer();
-		await rtcPeerConnection.setLocalDescription(sessionDescription);
-
-		ws.send(JSON.stringify({
-			type: 'webrtc_offer',
-			sdp: sessionDescription,
-			roomId,
-			inviterId: userId,
-			invitedUserId
-		}));
-		console.log('Offer created and sent:', sessionDescription);
+		const geoPermission = await navigator.permissions.query({ name: "geolocation" });
+		if (geoPermission.state === "granted" || geoPermission.state === "prompt") {
+			navigator.geolocation.getCurrentPosition(successCallback, errorCallback);
+		} else {
+			alert("Géolocalisation refusée");
+		}
 	} catch (error) {
-		console.error('Error creating offer:', error);
+		console.error("Erreur d'accès aux périphériques:", error);
+		alert("Erreur d'accès aux périphériques : " + error.message);
 	}
-}
+	console.log('Initialized user:', username, userId);
+	initializeWebSocket();
+};
 
-async function createAnswer(roomId) {
-	try {
-		console.log('Creating answer...');
-		const sessionDescription = await rtcPeerConnection.createAnswer();
-		await rtcPeerConnection.setLocalDescription(sessionDescription);
-
-		ws.send(JSON.stringify({
-			type: 'webrtc_answer',
-			sdp: sessionDescription,
-			roomId,
-			inviterId,
-			invitedUserId: userId
-		}));
-		console.log('Answer created and sent:', sessionDescription);
-	} catch (error) {
-		console.error('Error creating answer:', error);
+const handleWebSocketMessage = (data) => {
+	// Handle WebSocket messages related to the map and geolocation
+	if (data.type === "update") {
+		updateUserPositions([ data ]);
 	}
-}
+};
 
-function setRemoteStream(event) {
-	if (event.streams && event.streams[ 0 ]) {
-		document.getElementById('remote-video').srcObject = event.streams[ 0 ];
-		remoteStream = event.streams[ 0 ];
-		console.log('Remote stream set:', remoteStream);
-	} else {
-		console.error('No remote stream available');
-	}
-}
-
-function sendIceCandidate(event) {
-	if (event.candidate) {
-		ws.send(JSON.stringify({
-			type: 'webrtc_ice_candidate',
-			roomId,
-			label: event.candidate.sdpMLineIndex,
-			candidate: event.candidate.candidate,
-			targetId: event.candidate.sdpMid === '0' ? invitedUserId : inviterId
-		}));
-
-	}
-}
+setInterval(fetchUserPositions, 1000);
+fetchUserPositions();
+initializeWebSocket();

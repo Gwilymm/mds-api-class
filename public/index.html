@@ -81,13 +81,13 @@
 
     <div id="video-chat" class="bg-white p-6 rounded-lg shadow-lg">
       <h3 class="text-xl font-semibold mb-4">Visioconférence</h3>
-      <video id="local-video" playsinline='playsinline' autoplay='autoplay' class="w-full mb-4"></video>
-      <video id="remote-video" playsinline='playsinline' autoplay='autoplay' class="w-full"></video>
-      <button onclick="endVideoCall()" class="bg-red-500 text-white px-4 py-2 rounded mt-4">Terminer l'appel</button>
+      <video id="local-video" playsinline='playsinline' autoplay='autoplay' muted="muted" class="w-full mb-4"></video>
+      <video id="remote-video" playsinline='playsinline' autoplay='autoplay' muted="muted" class="w-full"></video>
+      <button id="end-call-btn" class="bg-red-500 text-white px-4 py-2 rounded mt-4">Terminer l'appel</button>
     </div>
 
     <script src="/leaflet/leaflet.js"></script>
     <script src="/main.js"></script>
-    <script src="/map.js"></script>
+    <script src="/visio.js"></script>
   </body>
 </html>

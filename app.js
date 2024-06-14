@@ -24,9 +24,16 @@ app.get('/', (req, res) => {
 
 // WebSocket pour les mises à jour en temps réel
 wss.on('connection', (ws) => {
-	ws.on('message', (message) => {
-		const data = JSON.parse(message);
+	let peerConnection; // Ajoutez cette ligne pour suivre les connexions de pairs
 
+	ws.on('message', async (message) => {
+		let data;
+		try {
+			data = JSON.parse(message);
+		} catch (error) {
+			console.error('Invalid JSON:', error);
+			return;
+		}
 
 		if (data.type === 'update') {
 			const user = users.find(u => u.id === data.id);
@@ -49,47 +56,61 @@ wss.on('connection', (ws) => {
 			if (inviter) {
 				inviter.ws.send(JSON.stringify({ type: 'call_accepted', roomId: data.roomId }));
 			}
-		} else if (data.type === 'webrtc_offer' || data.type === 'webrtc_answer' || data.type === 'webrtc_ice_candidate') {
-			console.log("passe par mes couilles");
-			console.log(data);
-			const targetUser = users.find(user => user.id === (data.type === 'webrtc_offer' ? data.targerId : data.inviterId));
-			console.log(targetUser);
+		} else if (data.type === 'join_room') {
+			const targetUser = users.find(user => user.id !== data.userId && user.ws.readyState === WebSocket.OPEN);
+			if (targetUser) {
+				peerConnection = new RTCPeerConnection({
+					iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ],
+				});
+
+				peerConnection.onicecandidate = (event) => {
+					if (event.candidate) {
+						ws.send(JSON.stringify({
+							type: 'webrtc_ice_candidate',
+							targetId: data.userId,
+							candidate: event.candidate,
+						}));
+					}
+				};
+
+				const offer = await peerConnection.createOffer();
+				await peerConnection.setLocalDescription(offer);
+
+				targetUser.ws.send(JSON.stringify({ type: 'webrtc_offer', roomId: data.roomId, inviterId: data.userId, offer: offer }));
+			}
+		} else if ([ 'webrtc_offer', 'webrtc_answer', 'webrtc_ice_candidate' ].includes(data.type)) {
+			const targetUser = users.find(user => user.id === data.targetId);
 			if (targetUser) {
 				targetUser.ws.send(JSON.stringify(data));
 			}
 		}
 
-		// Diffuser les nouvelles positions à tous les clients connectés
-		const usersWithoutWS = users.map(user => ({
-			id: user.id,
-			name: user.name,
-			position: user.position
-		}));
-
-		wss.clients.forEach(client => {
-			if (client.readyState === WebSocket.OPEN) {
-				client.send(JSON.stringify(usersWithoutWS));
-			}
-		});
+		broadcastUserPositions();
 	});
 
 	ws.on('close', () => {
 		users = users.filter(user => user.ws !== ws);
+		broadcastUserPositions();
+	});
 
-		// Diffuser les nouvelles positions à tous les clients connectés
-		const usersWithoutWS = users.map(user => ({
-			id: user.id,
-			name: user.name,
-			position: user.position
-		}));
-
-		wss.clients.forEach(client => {
-			if (client.readyState === WebSocket.OPEN) {
-				client.send(JSON.stringify(usersWithoutWS));
-			}
-		});
+	ws.on('error', (error) => {
+		console.error('WebSocket error:', error);
 	});
 });
+
+const broadcastUserPositions = () => {
+	const usersWithoutWS = users.map(user => ({
+		id: user.id,
+		name: user.name,
+		position: user.position
+	}));
+
+	wss.clients.forEach(client => {
+		if (client.readyState === WebSocket.OPEN) {
+			client.send(JSON.stringify(usersWithoutWS));
+		}
+	});
+};
 
 const port = 3000;
 server.listen(port, () => {
