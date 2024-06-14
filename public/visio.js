@@ -1,199 +1,118 @@
-const Visio = (() => {
-	let localStream;
-	let remoteStream;
-	let peerConnection;
-	let isCaller = false;  // Dynamically determine or assign based on your app logic
-	const configuration = {
-		iceServers: [
-			{
-				urls: "stun:stun.l.google.com:19302",
-			},
-		],
-	};
+// visio.js
 
-	const startVideoCall = async (roomId) => {
+const Visio = {
+	localVideo: document.getElementById('local-video'),
+	remoteVideo: document.getElementById('remote-video'),
+	peerConnection: null,
+	localStream: null,
+
+	initialize: async function () {
 		try {
-			localStream = await navigator.mediaDevices.getUserMedia({
-				video: true,
-				audio: true,
-			});
-
-			document.getElementById("local-video").srcObject = localStream;
-			document.getElementById("video-chat").style.display = "block";
-
-			peerConnection = new RTCPeerConnection(configuration);
-
-			localStream.getTracks().forEach((track) => {
-				peerConnection.addTrack(track, localStream);
-			});
-
-			peerConnection.ontrack = (event) => {
-				remoteStream = event.streams[ 0 ];
-				document.getElementById("remote-video").srcObject = remoteStream;
-			};
-
-			peerConnection.onicecandidate = (event) => {
-				if (event.candidate) {
-					const data = {
-						type: 'webrtc_ice_candidate',
-						targetId: roomId,
-						candidate: event.candidate,
-					};
-					ws.send(JSON.stringify(data));
-				}
-			};
-
-			// Initiate negotiation if this peer is the caller
-			if (isCaller) {
-				const offer = await peerConnection.createOffer();
-				await peerConnection.setLocalDescription(offer);
-				ws.send(JSON.stringify({
-					type: 'webrtc_offer',
-					roomId: roomId,
-					offer: offer,
-				}));
-			}
+			this.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+			this.localVideo.srcObject = this.localStream;
 		} catch (error) {
-			console.error("Error accessing media devices.", error);
+			console.error('Error accessing media devices.', error);
 		}
-	};
+	},
 
-	const handleWebSocketMessage = (data) => {
-		switch (data.type) {
-			case 'invite_to_call':
-				if (confirm(`You are invited to a video call by ${data.inviterId}. Do you accept?`)) {
-					isCaller = false;  // Set based on your logic
-					const response = {
-						type: 'call_accepted',
-						roomId: data.roomId,
-						inviterId: data.inviterId,
-					};
-					ws.send(JSON.stringify(response));
-					startVideoCall(data.roomId);
-				}
-				break;
-			case 'call_accepted':
-				isCaller = true;  // Set based on your logic
-				startVideoCall(data.roomId);
-				break;
-			case 'webrtc_offer':
-				handleOffer(data);
-				break;
-			case 'webrtc_answer':
-				handleAnswer(data);
-				break;
-			case 'webrtc_ice_candidate':
-				handleIceCandidate(data);
-				break;
-		}
-	};
+	setupWebSocket: function () {
+		ws = new WebSocket("wss://gwilym.is-a.dev");
 
-	const handleOffer = async (data) => {
-		if (!peerConnection) {
-			await startVideoCall(data.roomId);
-		}
-
-		if (!data.offer || !data.offer.sdp) {
-			console.error("Received invalid offer data", data);
-			return;
-		}
-
-		const offerDesc = new RTCSessionDescription({
-			type: data.offer.type,
-			sdp: data.offer.sdp
-
-		});
-
-		await peerConnection.setRemoteDescription(offerDesc);
-		const answer = await peerConnection.createAnswer();
-
-		await peerConnection.setLocalDescription(answer);
-
-		ws.send(JSON.stringify({
-			type: 'webrtc_answer',
-			targetId: data.inviterId,
-			answer: {
-				type: answer.type,
-				sdp: answer.sdp,
-			},
-		}));
-	};
-
-	const handleAnswer = async (data) => {
-		if (!data.answer || !data.answer.sdp) {
-			console.error("Received invalid answer data", data);
-			return;
-		}
-
-		// Check if the peer connection is expecting an answer
-		if (peerConnection.signalingState !== "have-local-offer") {
-			console.error(`Cannot set remote answer in state: ${peerConnection.signalingState}`);
-			return;
-		}
-
-		try {
-			const answerDesc = new RTCSessionDescription(data.answer);
-			await peerConnection.setRemoteDescription(answerDesc);
-			console.log("Answer successfully set as remote description");
-		} catch (error) {
-			console.error("Failed to set remote description with error: ", error);
-		}
-	};
-
-	const handleIceCandidate = async (data) => {
-		try {
-			await peerConnection.addIceCandidate(data.candidate);
-		} catch (e) {
-			console.error('Error adding received ice candidate', e);
-		}
-	};
-
-	const createRoom = (roomId, callback) => {
-		const data = {
-			type: 'create_room',
-			roomId
+		ws.onopen = () => {
+			console.log("WebSocket connection opened");
 		};
+
+		ws.onmessage = (event) => {
+			const data = JSON.parse(event.data);
+			this.handleWebSocketMessage(data);
+		};
+
+		ws.onclose = () => {
+			console.warn("WebSocket connection closed. Reconnecting...");
+			setTimeout(this.setupWebSocket.bind(this), 1000); // Use bind to ensure proper context
+		};
+
+		ws.onerror = (error) => {
+			console.error("WebSocket error:", error);
+		};
+	},
+
+	handleWebSocketMessage: async function (data) {
+		switch (data.type) {
+			case 'offer':
+				await this.handleOffer(data.offer);
+				break;
+			case 'answer':
+				await this.handleAnswer(data.answer);
+				break;
+			case 'ice-candidate':
+				await this.handleICECandidate(data.candidate);
+				break;
+		}
+	},
+
+	sendSignalingData: function (data) {
 		ws.send(JSON.stringify(data));
-		// Assume callback is called after room is created; this could be handled more robustly with confirmation messages.
-		if (callback) callback();
-	};
+	},
 
-	const inviteToVideoCall = (invitedUserId) => {
-		console.log(`Inviting user ${invitedUserId} to video call...`);
-		const roomId = `room-${Date.now()}`;
-		createRoom(roomId, () => {
-			const data = {
-				type: 'invite_to_call',
-				roomId,
-				invitedUserId,
-				inviterId: userId,
-			};
-			console.log(`Room ${roomId} created, inviting ${invitedUserId}`);
-			ws.send(JSON.stringify(data));
-		});
-	};
+	createPeerConnection: function () {
+		const configuration = { iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ] };
+		this.peerConnection = new RTCPeerConnection(configuration);
 
+		this.peerConnection.onicecandidate = event => {
+			if (event.candidate) {
+				this.sendSignalingData({ type: 'ice-candidate', candidate: event.candidate });
+			}
+		};
 
-	const endVideoCall = () => {
-		document.getElementById("video-chat").style.display = "none";
-		if (peerConnection) {
-			peerConnection.close();
-			peerConnection = null;
+		this.peerConnection.ontrack = event => {
+			this.remoteVideo.srcObject = event.streams[ 0 ];
+		};
+
+		this.peerConnection.addStream(this.localStream);
+	},
+
+	createOffer: async function () {
+		this.createPeerConnection();
+		const offer = await this.peerConnection.createOffer();
+		await this.peerConnection.setLocalDescription(offer);
+		this.sendSignalingData({ type: 'offer', offer: offer });
+		document.getElementById('video-chat').style.display = 'block'; // Show video chat on caller
+	},
+
+	handleOffer: async function (offer) {
+		this.createPeerConnection();
+		await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+		const answer = await this.peerConnection.createAnswer();
+		await this.peerConnection.setLocalDescription(answer);
+		this.sendSignalingData({ type: 'answer', answer: answer });
+		document.getElementById('video-chat').style.display = 'block'; // Show video chat on receiver
+	},
+
+	handleAnswer: async function (answer) {
+		await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+	},
+
+	handleICECandidate: async function (candidate) {
+		try {
+			await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+		} catch (error) {
+			console.error('Error adding received ice candidate', error);
 		}
-		if (localStream) {
-			localStream.getTracks().forEach((track) => track.stop());
-		}
-		if (remoteStream) {
-			remoteStream.getTracks().forEach((track) => track.stop());
-		}
-	};
+	},
 
-	document.addEventListener('DOMContentLoaded', (event) => {
-		document.getElementById('end-call-btn').addEventListener('click', endVideoCall);
-	});
+	inviteToVideoCall: function (userId) {
+		this.createOffer();
+	},
 
-	return {
-		inviteToVideoCall,
-		handleWebSocketMessage,
-	};
-})();
+	endCall: function () {
+		if (this.peerConnection) {
+			this.peerConnection.close();
+			this.peerConnection = null;
+		}
+		document.getElementById('video-chat').style.display = 'none';
+	}
+};
+
+Visio.initialize();
+Visio.setupWebSocket(); // Ensure WebSocket is set up on load

@@ -49,7 +49,6 @@ let username;
 let userId;
 
 const initializeWebSocket = () => {
-	console.log("mes couilles");
 	ws = new WebSocket("wss://gwilym.is-a.dev");
 
 	ws.onopen = () => {
@@ -58,14 +57,15 @@ const initializeWebSocket = () => {
 
 	ws.onmessage = (event) => {
 		const data = JSON.parse(event.data);
-		if (Array.isArray(data)) {
-			updateUserPositions(data);
+
+		if (data.type !== "update_positions") {
+			console.log("Received WebSocket message:", data);
+		}
+
+		if (data.type === "update_positions") {
+			updateUserPositions(data.positions);
 		} else {
-			if (data.type.includes('webrtc') || data.type.includes('call')) {
-				Visio.handleWebSocketMessage(data);
-			} else {
-				handleWebSocketMessage(data);
-			}
+			Visio.handleWebSocketMessage(data); // Ensure this function is defined in visio.js
 		}
 	};
 
@@ -183,14 +183,6 @@ const initializeUser = async () => {
 	console.log('Initialized user:', username, userId);
 	initializeWebSocket();
 };
-
-const handleWebSocketMessage = (data) => {
-	// Handle WebSocket messages related to the map and geolocation
-	if (data.type === "update") {
-		updateUserPositions([ data ]);
-	}
-};
-
 
 initializeWebSocket();
 setInterval(fetchUserPositions, 1000);
