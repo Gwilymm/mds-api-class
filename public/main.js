@@ -49,6 +49,7 @@ let username;
 let userId;
 
 const initializeWebSocket = () => {
+	console.log("mes couilles");
 	ws = new WebSocket("wss://gwilym.is-a.dev");
 
 	ws.onopen = () => {
@@ -190,6 +191,7 @@ const handleWebSocketMessage = (data) => {
 	}
 };
 
+
+initializeWebSocket();
 setInterval(fetchUserPositions, 1000);
 fetchUserPositions();
-initializeWebSocket();

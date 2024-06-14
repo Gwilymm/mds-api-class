@@ -1,34 +1,27 @@
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
-const { RTCPeerConnection } = require('wrtc'); // Add this line
 const bodyParser = require('body-parser');
 const path = require('path');
-let users = []; // Initialize the list of users
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+let users = []; // Initialize the list of users
+let rooms = []; // Initialize the list of rooms
+
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// API and WebSocket setup remains the same...
-
-// Use RTCPeerConnection from wrtc inside WebSocket event handlers
-
-
-// API RESTful pour les utilisateurs
 app.get('/api/users', (req, res) => {
-	res.json(users);
+	res.json(users.map(user => ({ id: user.id, position: user.position, name: user.name })));
 });
 
-// Route racine
 app.get('/', (req, res) => {
 	res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// WebSocket pour les mises à jour en temps réel
 wss.on('connection', (ws) => {
 	ws.on('message', async (message) => {
 		let data;
@@ -39,71 +32,31 @@ wss.on('connection', (ws) => {
 			return;
 		}
 
-		if (data.type === 'update') {
-			const user = users.find(u => u.id === data.id);
-			if (user) {
-				user.position = data.position;
-				user.name = data.name;
-			} else {
-				users.push({ id: data.id, name: data.name, position: data.position, ws });
-			}
-		} else if (data.type === 'disconnect') {
-			users = users.filter(user => user.id !== data.id);
-		} else if (data.type === 'invite_to_call') {
-			const targetUser = users.find(user => user.id === data.invitedUserId);
-			if (targetUser) {
-				const roomId = data.roomId;
-				targetUser.ws.send(JSON.stringify({ type: 'invite_to_call', roomId, inviterId: data.inviterId }));
-			}
-		} else if (data.type === 'call_accepted') {
-			const inviter = users.find(user => user.id === data.inviterId);
-			if (inviter) {
-				inviter.ws.send(JSON.stringify({ type: 'call_accepted', roomId: data.roomId }));
-			}
-		} else if (data.type === 'join_room') {
-			const targetUser = users.find(user => user.id !== data.userId && user.ws.readyState === WebSocket.OPEN);
-			if (targetUser) {  // Replace targetContact with targetUser here
-				const peerConnection = new RTCPeerConnection({
-					iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ],
-				});
-
-				peerConnection.onicecandidate = (event) => {
-					if (event.cormandidate) {
-						ws.send(JSON.stringify({
-							type: 'webrtc_ice_candidate',
-							targetId: data.userId,
-							candidate: event.candidate,
-						}));
-					}
-				};
-
-				const offer = await peerConnection.createOffer();
-				await peerContext.setLocalDescription(offer);
-
-				targetUser.ws.send(JSON.stringify({
-					type: 'webrtc_offer',
-					roomId: data.roomId,
-					inviterId: data.userId,
-					offer: {
-						type: offer.type,
-						sdp: offer.sdp,
-					}
-				}));
-			}
-
-		} else if ([ 'webrtc_offer', 'webrtc_answer', 'webrtc_ice_candidate' ].includes(data.type)) {
-			const targetUser = users.find(user => user.id === data.targetId);
-			if (targetUser) {
-				targetUser.ws.send(JSON.stringify(data));
-			}
+		switch (data.type) {
+			case 'update':
+				handleUpdate(ws, data);
+				break;
+			case 'disconnect':
+				handleDisconnect(ws);
+				break;
+			case 'create_room':
+				createRoom(data.roomId, ws);
+				break;
+			case 'join_room':
+				joinRoom(data.roomId, ws);
+				break;
+			case 'invite_to_call':
+			case 'webrtc_offer':
+			case 'wejsc_answer':
+			case 'webrtc_ice_candidate':
+				console.log(`Forwarding ${data.type} to peer in room ${data.roomId}`);
+				forwardToPeer(data.roomId, ws, data);
+				break;
 		}
-
-		broadcastUserPositions();
 	});
 
 	ws.on('close', () => {
-		users = users.filter(user => user.ws !== ws);
-		broadcastUserPositions();
+		handleDisconnect(ws);
 	});
 
 	ws.on('error', (error) => {
@@ -111,21 +64,71 @@ wss.on('connection', (ws) => {
 	});
 });
 
-const broadcastUserPositions = () => {
-	const usersWithoutWS = users.map(user => ({
-		id: user.id,
-		name: user.name,
-		position: user.position
-	}));
+function createRoom(roomId, userWs) {
+	const roomExists = rooms.find(r => r.id === roomId);
+	if (!roomExists) {
+		const newRoom = { id: roomId, users: [ userWs ] };
+		rooms.push(newRoom);
+		console.log(`Room created with ID: ${roomId}`);
+	} else {
+		console.error(`Attempted to create a room that already exists with ID: ${roomId}`);
+	}
+}
 
-	wss.clients.forEach(client => {
-		if (client.readyState === WebSocket.OPEN) {
-			client.send(JSON.stringify(usersWithoutWS));
+function joinRoom(roomId, userWs) {
+	let room = rooms.find(r => r.id === roomId);
+	console.log(`User joined room with ID: ${roomId}`);
+	if (!room) {
+		console.error(`No room found with ID: ${roomId}. Creating room.`);
+		createRoom(roomId, userWs);
+		room = rooms.find(r => r.id === roomId);
+	}
+	room.users.push({ ws: userWs });
+}
+
+function handleUpdate(ws, data) {
+	const user = users.find(u => u.id === data.id);
+	if (user) {
+		user.position = data.position;
+		broadcastUserPositions();
+	} else {
+		users.push({ ws, id: data.id, name: data.name, position: data.position });
+		broadcastUserPositions();
+	}
+}
+
+function broadcastUserPositions() {
+	const positions = users.map(user => ({ id: user.id, name: user.name, position: user.position }));
+	users.forEach(user => {
+		if (user.ws && user.ws.readyState === WebSocket.OPEN) {
+			user.ws.send(JSON.stringify({ type: 'update_positions', positions }));
 		}
 	});
-};
+}
+
+function forwardToPeer(roomId, ws, data) {
+	const room = rooms.find(r => r.id === roomId);
+	if (!room) {
+		console.error(`Room not found with ID: ${roomId}`);
+		ws.send(JSON.stringify({ type: 'notification', message: 'Room not found' }));
+		return;
+	}
+
+	const otherUsers = room.users.filter(user => user.ws !== ws);
+	otherUsers.forEach(user => {
+		if (user.ws && user.ws.readyState === WebSocket.OPEN) {
+			user.ws.send(JSON.stringify(data));
+		}
+	});
+}
+
+function handleDisconnect(ws) {
+	users = users.filter(user => user.ws !== ws);
+	broadcastUserPositions();
+}
 
 const port = 3000;
 server.listen(port, () => {
-	console.log(`Server is running on port ${port}`);
+	console.log(`Server is running on port ${1986}`);
 });
+
