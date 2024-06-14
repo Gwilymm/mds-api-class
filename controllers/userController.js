@@ -1,3 +1,5 @@
+/* This code snippet is a Node.js module that defines several functions related to managing users. Here
+is a breakdown of what each part of the code is doing: */
 const users = require('../models/user');
 
 exports.getUsers = (req, res) => {

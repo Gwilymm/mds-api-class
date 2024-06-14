@@ -29,6 +29,17 @@
       box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
       z-index: 1000;
     }
+    #incoming-call {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      z-index: 1000;
+    }
     video {
       width: 100%;
       max-height: 300px;
@@ -87,6 +98,12 @@
     <video id="local-video" playsinline autoplay muted></video>
     <video id="remote-video" playsinline autoplay muted></video>
     <button id="end-call-btn" class="bg-red-500 text-white px-4 py-2 rounded mt-4" onclick="Visio.endCall()">Terminer l'appel</button>
+  </div>
+
+  <div id="incoming-call" class="bg-white p-6 rounded-lg shadow-lg">
+    <h3 class="text-xl font-semibold mb-4">Appel entrant</h3>
+    <button id="accept-call-btn" class="bg-green-500 text-white px-4 py-2 rounded" onclick="Visio.acceptCall()">Accepter</button>
+    <button id="decline-call-btn" class="bg-red-500 text-white px-4 py-2 rounded mt-4" onclick="Visio.declineCall()">Refuser</button>
   </div>
 
   <script src="/leaflet/leaflet.js"></script>
