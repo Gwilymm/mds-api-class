@@ -1,3 +1,5 @@
+// main.js
+
 L.Icon.Default.imagePath = "https://unpkg.com/leaflet@1.7.1/dist/images/";
 const map = L.map("map").setView([ 51.505, -0.09 ], 13);
 
@@ -7,15 +9,6 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 
 const markers = {};
 
-/**
- * The updateUserPositions function updates the positions of users on a map and displays their names in
- * a list with a button to invite them to a video call.
- * @param users - The `users` parameter in the `updateUserPositions` function is expected to be an
- * array of user objects. Each user object should have the following properties:
- * @returns The `updateUserPositions` function does not explicitly return any value. It updates the
- * positions of users on a map and updates the user list in the HTML document, but it does not return
- * any specific value.
- */
 const updateUserPositions = (users) => {
 	if (!Array.isArray(users)) {
 		console.error("La réponse de l'API n'est pas un tableau d'utilisateurs:", users);
@@ -40,9 +33,6 @@ const updateUserPositions = (users) => {
 	});
 };
 
-/**
- * The function fetches user positions from an API endpoint and updates the user positions accordingly.
- */
 const fetchUserPositions = async () => {
 	try {
 		const response = await fetch("/api/users", { cache: "no-cache" });
@@ -60,10 +50,6 @@ let ws;
 let username;
 let userId;
 
-/**
- * The `initializeWebSocket` function establishes a WebSocket connection to a specified URL, handles
- * incoming messages, and reconnects in case of closure.
- */
 const initializeWebSocket = () => {
 	ws = new WebSocket("wss://gwilym.is-a.dev");
 
@@ -95,12 +81,6 @@ const initializeWebSocket = () => {
 	};
 };
 
-/**
- * The function `sendUserPosition` sends the user's position data over a WebSocket connection if the
- * connection is open.
- * @param position - The `position` parameter in the `sendUserPosition` function is an object that
- * contains the user's coordinates. It likely has a structure similar to this:
- */
 const sendUserPosition = (position) => {
 	if (ws && ws.readyState === WebSocket.OPEN) {
 		const data = {
@@ -109,6 +89,7 @@ const sendUserPosition = (position) => {
 			position: {
 				lat: position.coords.latitude,
 				lng: position.coords.longitude,
+				alt: position.coords.altitude || 'N/A'
 			},
 			type: "update",
 		};
@@ -118,13 +99,6 @@ const sendUserPosition = (position) => {
 	}
 };
 
-/**
- * The updateUserPosition function sends updated user position data via WebSocket and updates the map
- * markers accordingly.
- * @param position - The `position` parameter in the `updateUserPosition` function is an object that
- * contains the user's coordinates. It has a `coords` property which in turn has `latitude` and
- * `longitude` properties representing the user's current latitude and longitude coordinates.
- */
 const updateUserPosition = (position) => {
 	if (ws && ws.readyState === WebSocket.OPEN) {
 		const data = {
@@ -133,6 +107,7 @@ const updateUserPosition = (position) => {
 			position: {
 				lat: position.coords.latitude,
 				lng: position.coords.longitude,
+				alt: position.coords.altitude || 'N/A'
 			},
 			type: "update",
 		};
@@ -147,19 +122,15 @@ const updateUserPosition = (position) => {
 				.openPopup();
 		}
 		map.setView([ position.coords.latitude, position.coords.longitude ], map.getZoom());
+
+		// Update elevation data
+		const elevationOutput = document.getElementById('elevation-output');
+		elevationOutput.innerText = `Altitude: ${position.coords.altitude !== null ? position.coords.altitude.toFixed(2) : 'N/A'} mètres`;
 	} else {
 		console.warn("WebSocket is not open. Cannot update position.");
 	}
 };
 
-/**
- * The function `successCallback` updates the user's position on a map and continuously retrieves the
- * user's updated position with high accuracy.
- * @param position - The `position` parameter in the `successCallback` function represents the position
- * object that is returned by the Geolocation API when the user's location is successfully retrieved.
- * It contains information about the user's geographical position, such as latitude and longitude
- * coordinates, altitude, accuracy, and timestamp.
- */
 const successCallback = (position) => {
 	sendUserPosition(position);
 	map.setView([ position.coords.latitude, position.coords.longitude ], 13);
@@ -176,16 +147,12 @@ const successCallback = (position) => {
 			enableHighAccuracy: true
 		});
 	}, 1000);
+
+	// Update elevation data
+	const elevationOutput = document.getElementById('elevation-output');
+	elevationOutput.innerText = `Altitude: ${position.coords.altitude !== null ? position.coords.altitude.toFixed(2) : 'N/A'} mètres`;
 };
 
-/**
- * The function `errorCallback` handles different types of geolocation errors and displays
- * corresponding error messages on a webpage.
- * @param error - The `error` parameter in the `errorCallback` function is an object that represents an
- * error that occurred during a geolocation request. It contains information about the type of error
- * that occurred, such as `PERMISSION_DENIED`, `POSITION_UNAVAILABLE`, `TIMEOUT`, or `UNKNOWN_ERROR`.
- * The
- */
 const errorCallback = (error) => {
 	const errorMessageElement = document.getElementById("error-message");
 	switch (error.code) {
@@ -205,15 +172,6 @@ const errorCallback = (error) => {
 	console.error(error);
 };
 
-/**
- * The `initializeUser` function initializes a user by getting their username, generating a user ID,
- * checking geolocation permission, and initializing a WebSocket connection.
- * @returns If the `username` input field is empty, an alert message "Veuillez entrer un nom" is
- * displayed and the function returns without further execution. If there are no errors during the
- * geolocation permission check and retrieval, the function will attempt to get the current geolocation
- * position. If the geolocation permission is not granted or prompt, an alert message "Géolocalisation
- * refusée
- */
 const initializeUser = async () => {
 	username = document.getElementById("username").value.trim();
 	if (!username) {
@@ -236,6 +194,40 @@ const initializeUser = async () => {
 	}
 	console.log('Initialized user:', username, userId);
 	initializeWebSocket();
+	setupAccelerometer();
+};
+
+const setupAccelerometer = () => {
+	const inputOrAccel = document.getElementById('input-or-accel');
+
+	if ('DeviceMotionEvent' in window) {
+		inputOrAccel.innerHTML = `
+      <div id="accelerometer-data" class="bg-white p-6 rounded-lg shadow-lg mt-8 mb-8">
+        <h2 class="text-2xl font-semibold mb-4">Données de l'Accéléromètre et Altitude</h2>
+        <div id="accel-output">En attente des données de l'accéléromètre...</div>
+        <div id="elevation-output">En attente des données d'altitude...</div>
+      </div>
+    `;
+
+		window.addEventListener('devicemotion', event => {
+			const { accelerationIncludingGravity: accel } = event;
+			if (accel) {
+				const accelOutput = document.getElementById('accel-output');
+				accelOutput.innerText = `
+          Acceleration along X: ${accel.x ? accel.x.toFixed(2) : 'N/A'}
+          Acceleration along Y: ${accel.y ? accel.y.toFixed(2) : 'N/A'}
+          Acceleration along Z: ${accel.z ? accel.z.toFixed(2) : 'N/A'}
+        `;
+			}
+		});
+
+		navigator.geolocation.getCurrentPosition(position => {
+			const elevationOutput = document.getElementById('elevation-output');
+			elevationOutput.innerText = `Altitude: ${position.coords.altitude !== null ? position.coords.altitude.toFixed(2) : 'N/A'} mètres`;
+		}, errorCallback, {
+			enableHighAccuracy: true
+		});
+	}
 };
 
 initializeWebSocket();

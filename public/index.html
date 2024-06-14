@@ -4,11 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Accueil</title>
-  <link
-    href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
-    rel="stylesheet"
-  />
-  <link href="/leaflet/leaflet.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="/leaflet/leaflet.css" rel="stylesheet">
   <style>
     #map {
       height: 500px;
@@ -40,6 +37,14 @@
       box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
       z-index: 1000;
     }
+    #accelerometer-data {
+      padding: 10px;
+      background: #f9f9f9;
+      border: 1px solid #ccc;
+      margin-top: 20px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
     video {
       width: 100%;
       max-height: 300px;
@@ -49,9 +54,7 @@
 <body class="bg-gray-100 text-gray-800">
   <header class="bg-white shadow">
     <div class="container mx-auto px-4 py-6">
-      <h1 class="text-3xl font-bold text-center">
-        Bienvenue sur notre Application
-      </h1>
+      <h1 class="text-3xl font-bold text-center">Bienvenue sur notre Application</h1>
     </div>
   </header>
   <main class="container mx-auto px-4 py-8">
@@ -60,24 +63,16 @@
       <ul class="list-disc pl-5 space-y-2">
         <li>Partage de position en temps réel</li>
         <li>Visioconférence avec WebRTC</li>
-        <li>Utilisation de l'accéléromètre</li>
+        <li>Utilisation de l'accéléromètre et affichage de l'altitude</li>
       </ul>
     </section>
-    <section class="bg-white p-6 rounded-lg shadow-lg mt-8">
+    <section class="bg-white p-6 rounded-lg shadow-lg mt-8" id="user-section">
       <h2 class="text-2xl font-semibold mb-4">Carte des Utilisateurs</h2>
-      <div id="user-form" class="flex justify-center mb-4">
-        <input
-          type="text"
-          id="username"
-          placeholder="Entrez votre nom"
-          class="p-2 border rounded mr-2"
-        />
-        <button
-          onclick="initializeUser()"
-          class="bg-blue-500 text-white px-4 py-2 rounded"
-        >
-          Commencer
-        </button>
+      <div id="input-or-accel">
+        <div id="user-form" class="flex justify-center mb-4">
+          <input type="text" id="username" placeholder="Entrez votre nom" class="p-2 border rounded mr-2"/>
+          <button onclick="initializeUser()" class="bg-blue-500 text-white px-4 py-2 rounded">Commencer</button>
+        </div>
       </div>
       <div id="map" class="mb-4"></div>
       <div id="error-message"></div>
@@ -96,7 +91,7 @@
   <div id="video-chat" class="bg-white p-6 rounded-lg shadow-lg">
     <h3 class="text-xl font-semibold mb-4">Visioconférence</h3>
     <video id="local-video" playsinline autoplay muted></video>
-    <video id="remote-video" playsinline autoplay muted></video>
+    <video id="remote-video" playsinline autoplay></video>
     <button id="end-call-btn" class="bg-red-500 text-white px-4 py-2 rounded mt-4" onclick="Visio.endCall()">Terminer l'appel</button>
   </div>
 
