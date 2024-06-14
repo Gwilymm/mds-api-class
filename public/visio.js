@@ -54,17 +54,13 @@ const Visio = (() => {
 	};
 
 	const handleOffer = async (data) => {
-		if (!peerConnection) {
-			await startVideoCall(data.roomId);
-		}
-
 		if (!data.offer || !data.offer.sdp) {
-			console.error("Invalid offer data", data);
+			console.error("Received invalid offer data", data);
 			return;
 		}
 
-		const offerDesc = new RTCSessionDescription({
-			type: 'offer',
+		const offerDesc = new RTCSessionElement({
+			type: data.offer.type,
 			sdp: data.offer.sdp
 		});
 
@@ -72,16 +68,18 @@ const Visio = (() => {
 		const answer = await peerConnection.createAnswer();
 		await peerConnection.setLocalDescription(answer);
 
-		const response = {
+		ws.send(JSON.stringify({
 			type: 'webrtc_answer',
 			targetId: data.inviterId,
 			answer: {
 				type: answer.type,
-				sdp: answer.sdp,
-			},
-		};
-		ws.send(JSON.stringify(response));
+				sdp: answer.sdp
+			}
+		}));
 	};
+
+
+
 
 
 	const handleWebSocketMessage = (data) => {

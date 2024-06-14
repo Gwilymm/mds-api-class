@@ -1,9 +1,10 @@
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+const { RTCPeerConnection } = require('wrtc'); // Add this line
 const bodyParser = require('body-parser');
 const path = require('path');
-let users = []; // Initialiser la liste des utilisateurs
+let users = []; // Initialize the list of users
 
 const app = express();
 const server = http.createServer(app);
@@ -11,6 +12,11 @@ const wss = new WebSocket.Server({ server });
 
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// API and WebSocket setup remains the same...
+
+// Use RTCPeerConnection from wrtc inside WebSocket event handlers
+
 
 // API RESTful pour les utilisateurs
 app.get('/api/users', (req, res) => {
@@ -24,8 +30,6 @@ app.get('/', (req, res) => {
 
 // WebSocket pour les mises à jour en temps réel
 wss.on('connection', (ws) => {
-	let peerConnection; // Ajoutez cette ligne pour suivre les connexions de pairs
-
 	ws.on('message', async (message) => {
 		let data;
 		try {
@@ -58,13 +62,13 @@ wss.on('connection', (ws) => {
 			}
 		} else if (data.type === 'join_room') {
 			const targetUser = users.find(user => user.id !== data.userId && user.ws.readyState === WebSocket.OPEN);
-			if (targetUser) {
-				peerConnection = new RTCPeerConnection({
+			if (targetUser) {  // Replace targetContact with targetUser here
+				const peerConnection = new RTCPeerConnection({
 					iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ],
 				});
 
 				peerConnection.onicecandidate = (event) => {
-					if (event.candidate) {
+					if (event.cormandidate) {
 						ws.send(JSON.stringify({
 							type: 'webrtc_ice_candidate',
 							targetId: data.userId,
@@ -74,10 +78,19 @@ wss.on('connection', (ws) => {
 				};
 
 				const offer = await peerConnection.createOffer();
-				await peerConnection.setLocalDescription(offer);
+				await peerContext.setLocalDescription(offer);
 
-				targetUser.ws.send(JSON.stringify({ type: 'webrtc_offer', roomId: data.roomId, inviterId: data.userId, offer: offer }));
+				targetUser.ws.send(JSON.stringify({
+					type: 'webrtc_offer',
+					roomId: data.roomId,
+					inviterId: data.userId,
+					offer: {
+						type: offer.type,
+						sdp: offer.sdp,
+					}
+				}));
 			}
+
 		} else if ([ 'webrtc_offer', 'webrtc_answer', 'webrtc_ice_candidate' ].includes(data.type)) {
 			const targetUser = users.find(user => user.id === data.targetId);
 			if (targetUser) {
